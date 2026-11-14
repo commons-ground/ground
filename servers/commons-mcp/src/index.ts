@@ -12,7 +12,7 @@ export interface Env {
   OAUTH_PROVIDER: any;
   NOTION_TOKEN: string;
   MEMBER_CODES: string; // JSON: {"参加者コード": "表示名"}
-  PUBLIC_URL: string;
+  PUBLIC_URL?: string;
 }
 
 type Props = { name: string };
@@ -128,13 +128,13 @@ const apiHandler = {
   },
 };
 
-// 公開URL（https://<名前>.<サブドメイン>.workers.dev）は環境変数 PUBLIC_URL で渡す。
+// 公開URLは、環境変数 PUBLIC_URL があればそれを、なければ最初のリクエストの origin を使う（リポジトリにアカウント固有のURLを書かないため）。
 // OAuth のトークンはこの URL の /mcp に結び付けられる。
 let provider: OAuthProvider<Env> | undefined;
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    provider ??= makeProvider(env.PUBLIC_URL);
+    provider ??= makeProvider(env.PUBLIC_URL || new URL(req.url).origin);
     return provider.fetch(req, env, ctx);
   },
 };

@@ -40,8 +40,8 @@ flowchart LR
 <summary>手順</summary>
 
 1. Cloudflare にログインし、`npx wrangler login`
-2. `npx wrangler kv namespace create OAUTH_KV` で出た id を `wrangler.jsonc` の `REPLACE_AFTER_KV_CREATE` に入れる
-3. `PUBLIC_URL` を、デプロイ先の `https://winegrowers-commons-mcp.<サブドメイン>.workers.dev` にする
+2. `npx wrangler kv namespace create OAUTH_KV` で出た id を `wrangler.jsonc` の `kv_namespaces` に入れる（共有のサーバーは作成済み）
+3. 公開URLは自動で決まる（独自ドメインに置くときだけ `PUBLIC_URL` を変数で渡す）
 4. 鍵を Worker の secret に入れる（リポジトリには入れない）
    - `npx wrangler secret put NOTION_TOKEN`：Notion の「開発者ツール」→ コネクト「Commons MCP」の API トークン
    - `npx wrangler secret put MEMBER_CODES`：`{"参加者コード":"表示名", …}` の JSON。参加者を足すときはこれを入れ直す
