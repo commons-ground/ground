@@ -47,3 +47,14 @@
 ## 移したあとの元のページ
 
 元のページは消さず、名前の頭に「（移行済み）」を付け、本文の先頭に「正本はコモンズの〇〇」と書く。Notion AI は、同期で入る写し（スキルの名前のページ）を使う。
+
+## Claude のアカウントのスキルからの移行（2026-11-15）
+
+| 元のスキル | 移した先 |
+| --- | --- |
+| kagaku-chosa | research の science-research |
+| souryoku-chosa | research の wide-research |
+| podcast-kaisetsu | research の podcast-notes |
+| toi-zukuri | team の question-design |
+| slide-zukuri | team の slide-design（自分流の配色・道具は自分ルールへ） |
+| jichitai-mirai-data | 各自のNotionのスキルDB（ワインとは別の仕事のため共有しない） |

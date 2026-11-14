@@ -33,7 +33,7 @@
     {
       "name": "team",
       "source": "./plugins/team",
-      "description": "組織運営・話し合い：場づくりの問い（question-design）、理事会の議事録（board-minutes）"
+      "description": "組織運営・話し合い：場づくりの問い（question-design）、スライドづくり（slide-design、pptxへの上乗せ）、理事会の議事録（board-minutes）"
     },
     {
       "name": "equipment",
