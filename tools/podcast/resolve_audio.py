@@ -127,6 +127,72 @@ def generic_page(url: str):
     return None
 
 
+def _norm(t: str) -> str:
+    return re.sub(r"\W+", "", (t or "").lower())
+
+
+def feed_match(feed_url: str, title: str, page_url: str):
+    """RSSフィードから、タイトルかリンクが一致する回の enclosure を探す。"""
+    import xml.etree.ElementTree as ET
+    r = requests.get(feed_url, headers=UA, timeout=60)
+    root = ET.fromstring(r.content)
+    ch = root.find("channel")
+    pod = (ch.findtext("title") if ch is not None else "") or ""
+    want = _norm(title)
+    for it in root.iter("item"):
+        t = it.findtext("title") or ""
+        link = (it.findtext("link") or "").rstrip("/")
+        enc = it.find("enclosure")
+        if enc is None or not enc.get("url"):
+            continue
+        if (want and (_norm(t) == want or (len(want) > 20 and (want in _norm(t) or _norm(t) in want)))) or (link and link == page_url.rstrip("/")):
+            dur = it.findtext("{http://www.itunes.com/dtds/podcast-1.0.dtd}duration") or ""
+            secs = None
+            if dur:
+                parts = [int(x) for x in dur.split(":") if x.isdigit()]
+                secs = sum(v * 60 ** i for i, v in enumerate(reversed(parts))) if parts else None
+            pub = it.findtext("pubDate") or ""
+            try:
+                from email.utils import parsedate_to_datetime
+                pub = parsedate_to_datetime(pub).date().isoformat()
+            except Exception:
+                pub = ""
+            return {
+                "audio_url": enc.get("url"),
+                "title": t,
+                "podcast": pod,
+                "published": pub,
+                "duration_sec": secs,
+                "description": strip_tags(it.findtext("description") or ""),
+                "episode_key": "fd-" + key_of(enc.get("url")),
+            }
+    return None
+
+
+def page_feed(url: str):
+    """ページに音声が直接ない場合（YouTubeの埋め込みなど）、
+    ページ内の RSS リンクか Apple Podcasts の番組リンクから番組のフィードを見つけ、タイトルで回を探す。"""
+    r = requests.get(url, headers=UA, timeout=30)
+    t = r.text
+    tm = re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]*)"', t) or re.search(r"<title>([^<]*)</title>", t)
+    title = html.unescape(tm.group(1)).strip() if tm else ""
+    title = re.split(r"\s+[|\-–]\s+", title)[0]
+    feeds = re.findall(r'<link[^>]+type="application/rss\+xml"[^>]+href="([^"]+)"', t)
+    for m in re.finditer(r"podcasts\.apple\.com/[^\"'\s]*/id(\d+)", t):
+        d = requests.get("https://itunes.apple.com/lookup", params={"id": m.group(1)}, headers=UA, timeout=30).json()
+        feeds += [x["feedUrl"] for x in d.get("results", []) if x.get("feedUrl")]
+    for f in dict.fromkeys(feeds):
+        try:
+            res = feed_match(urllib.parse.urljoin(url, f), title, url)
+        except Exception as e:
+            print(f"feed {f}: {e}", file=sys.stderr)
+            res = None
+        if res:
+            res["episode_key"] = "pg-" + key_of(url)
+            return res
+    return None
+
+
 def ytdlp(url: str):
     p = subprocess.run(["yt-dlp", "-J", "--no-playlist", url], capture_output=True, text=True, timeout=180)
     if p.returncode != 0:
@@ -158,6 +224,7 @@ def resolve(url: str):
         tries.append(apple)
     if "youtube.com" not in host and "youtu.be" not in host:
         tries.append(generic_page)
+        tries.append(page_feed)
     tries.append(ytdlp)
     for f in tries:
         try:
