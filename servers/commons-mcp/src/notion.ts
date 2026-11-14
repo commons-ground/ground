@@ -83,6 +83,8 @@ function propValue(p: any): string {
 }
 
 export function propertiesText(obj: any): string {
+  // Wiki の行にはデータベースそのものが混ざる。その properties は列の定義なので値として読まない。
+  if (obj.object === "database") return "- （データベース。中身は commons_query_database で引く）";
   return Object.entries<any>(obj.properties ?? {})
     .map(([k, v]) => `- ${k}: ${propValue(v)}`)
     .join("\n");
