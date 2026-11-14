@@ -36,6 +36,16 @@ export function normalizeId(idOrUrl: string): string {
 
 const plain = (rt: any[] | undefined) => (rt ?? []).map((t) => t.plain_text ?? "").join("");
 
+// ページへの @メンションは「@[タイトル](id)」で返す。地の文字と見分けられるようにするため。
+const richText = (rt: any[] | undefined) =>
+  (rt ?? [])
+    .map((t) => {
+      const m = t.type === "mention" ? t.mention : null;
+      const id = m?.page?.id ?? m?.database?.id;
+      return id ? `@[${t.plain_text ?? ""}](${id})` : (t.plain_text ?? "");
+    })
+    .join("");
+
 export function titleOf(obj: any): string {
   if (obj.object === "database") return plain(obj.title);
   for (const p of Object.values<any>(obj.properties ?? {})) {
@@ -47,8 +57,9 @@ export function titleOf(obj: any): string {
 function propValue(p: any): string {
   switch (p.type) {
     case "title":
+      return plain(p.title);
     case "rich_text":
-      return plain(p[p.type]);
+      return richText(p.rich_text);
     case "number":
       return p.number == null ? "" : String(p.number);
     case "select":
