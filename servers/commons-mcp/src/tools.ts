@@ -182,7 +182,8 @@ export function buildServer(token: string, author: string): McpServer {
     "commons_update_properties",
     {
       title: "プロパティを変える",
-      description: "データベースの行のプロパティを変える。properties は Notion API の形式。",
+      description:
+        "データベースの行のプロパティを変える。properties は Notion API の形式。ページへの @メンションは rich_text に {type:\"mention\", mention:{page:{id}}} で入れる（読むときは @[タイトル](id) で返る）。",
       inputSchema: z.object({ page_id: z.string(), properties: z.record(z.string(), z.any()) }),
       annotations: { ...WRITE, idempotentHint: true },
     },
