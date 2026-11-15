@@ -15,11 +15,21 @@ on:
 permissions:
   contents: write
 
+# 取り込む土ごとに job を1つ置く。ワイン生産者なら ground と winegrowers の2つ。
 jobs:
-  run:
-    uses: winegrowers-commons/wine-ai-commons/.github/workflows/notion-skill-sync.yml@main
+  ground:
+    uses: commons-ground/ground/.github/workflows/notion-skill-sync.yml@main
     with:
       skills_data_source_id: ${{ vars.SKILLS_DATA_SOURCE_ID }}
       plugins: ${{ inputs.plugins || 'all' }}
+    secrets:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+  winegrowers:
+    needs: ground  # 控えのファイルを順に書くため、同時に走らせない
+    uses: commons-ground/ground/.github/workflows/notion-skill-sync.yml@main
+    with:
+      skills_data_source_id: ${{ vars.SKILLS_DATA_SOURCE_ID }}
+      commons_repository: commons-ground/winegrowers
+      plugins: all
     secrets:
       NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
