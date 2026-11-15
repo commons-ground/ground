@@ -31,7 +31,7 @@ Claudeが自分のNotionを読み書きできるようにします。
 1. 左のメニューで「カスタマイズ（Customize）」を開き、上の「プラグイン（Plugins）」を選ぶ
 2. 右上の「＋追加（Add）」→「マーケットプレイスを追加（Add marketplace）」を選ぶ
 3. 「リポジトリから追加（Add from a repository）」を選ぶ
-4. URLの欄に `winegrowers-commons/wine-ai-commons` と入れる
+4. URLの欄に `commons-ground/ground` と入れる。ワイン生産者は、同じ手順で `commons-ground/winegrowers` も足す
 5. 「自動で同期（Sync automatically）」がオンになっているのを確かめて、「同期（Sync）」を押す。これで、誰かが手順書を直すと自分のClaudeにも自動で届きます
 6. 一覧に「基盤」が出てきたら、その右の「追加（Add）」を押す。「基盤 is installed and ready to use.」と出れば完了
 
@@ -64,13 +64,13 @@ Claudeが自分のNotionを読み書きできるようにします。
 
 ## 手順書を直す側にも加わりたいとき（任意）
 
-手順書を自分で直したり、変更を出したりしたくなったら、GitHubの `winegrowers-commons` に参加します。参加者には招待メールが届いています。
+手順書を自分で直したり、変更を出したりしたくなったら、GitHubの `commons-ground` に参加します。参加者には招待メールが届いています。
 
-1. 招待メール（GitHubから届く、件名に `winegrowers-commons` が入ったもの）を開く
+1. 招待メール（GitHubから届く、件名に `commons-ground` が入ったもの）を開く
 2. GitHubのアカウントが無ければ、メールのボタンから作る。メールアドレスは招待が届いたものにする
-3. 「Join winegrowers-commons」（参加する）を押す
+3. 「Join commons-ground」（参加する）を押す
 
-アカウントを作らなくても、気づいたことはClaudeに言えば足ります。GitHubの [Issues](https://github.com/winegrowers-commons/wine-ai-commons/issues) に直接書くこともできます。
+アカウントを作らなくても、気づいたことはClaudeに言えば足ります。GitHubの [Issues](https://github.com/commons-ground/ground/issues) に直接書くこともできます。
 
 ## これから足すもの
 

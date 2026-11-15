@@ -20,7 +20,7 @@ import urllib.parse
 
 import requests
 
-UA = {"User-Agent": "Mozilla/5.0 (wine-ai-commons podcast-notes; +https://github.com/winegrowers-commons/wine-ai-commons)"}
+UA = {"User-Agent": "Mozilla/5.0 (commons-ground podcast-notes; +https://github.com/commons-ground/ground)"}
 AUDIO_EXT = re.compile(r"\.(mp3|m4a|aac|ogg|opus|wav|flac)(\?|$)", re.I)
 UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 
