@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>コモンズ｜AIの仕組みを、みんなで育てる</title>
+<meta name="description" content="データは手元に置いたまま、AIの仕事の進め方（スキル）だけを共有して育てる仕組み。">
+<style>
+:root{--bg:#fbfaf7;--card:#fff;--ink:#22201c;--sub:#5f5b53;--line:#e3dfd6;--base:#0f6e56;--base-bg:#e1f5ee;--own:#534ab7;--own-bg:#eeedfe;--auto:#854f0b;--auto-bg:#faeeda;--radius:14px}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1a18;--card:#24231f;--ink:#ece9e2;--sub:#b4b0a6;--line:#3a3833;--base:#5dcaa5;--base-bg:#0d3b30;--own:#afa9ec;--own-bg:#2c2858;--auto:#ef9f27;--auto-bg:#3d2a0c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;line-height:1.8;font-size:16px}
+main{max-width:880px;margin:0 auto;padding:48px 20px 64px}
+h1{font-size:28px;line-height:1.4;margin:0 0 12px;font-weight:600}
+h2{font-size:20px;margin:48px 0 16px;font-weight:600}
+p{margin:0 0 12px}
+.lead{font-size:18px;color:var(--sub)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.tag{display:inline-block;font-size:13px;padding:2px 10px;border-radius:99px;margin-bottom:8px}
+.t-base{background:var(--base-bg);color:var(--base)}.t-own{background:var(--own-bg);color:var(--own)}.t-auto{background:var(--auto-bg);color:var(--auto)}
+.diagram{display:grid;gap:10px}
+.box{border-radius:12px;padding:12px 16px;border:1px solid}
+.box b{display:block;font-size:16px}.box span{font-size:14px;color:var(--sub)}
+.base{background:var(--base-bg);border-color:var(--base)}
+.own{background:var(--own-bg);border-color:var(--own)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.flow{text-align:center;font-size:14px;color:var(--sub)}
+ol.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+ol.steps li{counter-increment:s;position:relative;padding:0 0 14px 44px}
+ol.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;background:var(--own);color:#fff;display:grid;place-items:center;font-size:15px}
+ol.steps small{color:var(--sub)}
+ul.auto{margin:0;padding-left:1.2em}
+code{font-family:ui-monospace,Menlo,monospace;font-size:14px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+a{color:var(--own)}
+.links a{display:block;padding:10px 0;border-bottom:1px solid var(--line);text-decoration:none}
+.links a span{color:var(--sub);font-size:14px;margin-left:8px}
+footer{margin-top:48px;font-size:13px;color:var(--sub)}
+</style>
+</head>
+<body>
+<main>
+
+<h1>データは手元に。AIの仕組みは、みんなで育てる。</h1>
+<p class="lead">コモンズは、AI（Claude）に渡す仕事の進め方（スキル）だけを共有して、使うほど全員のAIが賢くなるようにする仕組みです。新しく入った人も、その共同体に合わせて調整されたAIを、初日から使えます。</p>
+
+<h2>何を共有して、何を手元に残すか</h2>
+<div class="grid g2">
+  <div class="card"><span class="tag t-base">共有する</span>
+    <p>AIへの作業の手順書（スキル）、守る基本ルール、表の設計図、公開された知識</p></div>
+  <div class="card"><span class="tag t-own">手元に残す</span>
+    <p>人名・金額・取引先などの事業のデータ。各自の Notion・会計ソフト・Google Drive に置いたまま</p></div>
+</div>
+
+<h2>全体の形</h2>
+<div class="diagram">
+  <div class="box base"><b>土台のコモンズ（ground）</b><span>どのコモンズも使う、業種を問わないスキルと基本ルール</span></div>
+  <div class="flow">↓ スキルを取り込む　　↑ 分かったことを返す</div>
+  <div class="row">
+    <div class="box own"><b>家庭のコモンズ</b><span>暮らしのこと</span></div>
+    <div class="box own"><b>ワイン生産者のコモンズ</b><span>畑・栽培、知識コモンズ</span></div>
+    <div class="box own"><b>ぶどう園の会社のコモンズ</b><span>その会社のやり方</span></div>
+  </div>
+</div>
+<p style="margin-top:12px">個別のコモンズは、土台のスキルを取り込み、自分たちの事情に合わせて足して使います。分かったことを返すと、次に届く土台が良くなります。土台は個別のコモンズの中身に口を出さず、いつでも一部を外せます。</p>
+
+<h2>はじめかた</h2>
+<div class="grid g2">
+  <div class="card"><span class="tag t-own">あなたがやること</span>
+    <ol class="steps">
+      <li>Claude を Pro 以上にする <small>（1分）</small></li>
+      <li>Claude に Notion をつなぐ <small>（3分）</small></li>
+      <li>プラグインの画面で、マーケットプレイス <code>commons-ground/ground</code> を足して、使うプラグインを入れる <small>（5分）</small></li>
+      <li>使ってみて、気づいたことはそのまま Claude に言う</li>
+    </ol>
+    <p><a href="https://github.com/commons-ground/ground/blob/main/docs/getting-started.md">画面ごとの手順を見る</a></p>
+  </div>
+  <div class="card"><span class="tag t-auto">あとは自動で</span>
+    <ul class="auto">
+      <li>誰かがスキルを直すと、次の日から自分の Claude にも届く</li>
+      <li>入れたスキルは、どのチャットでも効く</li>
+      <li>ほかの人にも効く気づきは、Claude が名前や金額を抜いて、土台への提案にまとめる</li>
+    </ul>
+  </div>
+</div>
+<p style="margin-top:12px">Claude を契約していない人は、手順は要りません。家庭や会社のコモンズに AI がいれば、Notion のコメントで「@AIの名前」と書くだけで使えます。</p>
+
+<h2>自分たちに合わせる</h2>
+<p>軽い順に4段。上で足りるなら、下には降りません。</p>
+<div class="grid g4">
+  <div class="card"><b>1. 選ぶ</b><p>使うスキルを選び、要らないものを外す</p></div>
+  <div class="card"><b>2. 値を入れる</b><p>どの表を使うか、部門の名前など</p></div>
+  <div class="card"><b>3. 上乗せ</b><p>土台のスキルに自分の分を足す。土台が直れば、その改善も届く</p></div>
+  <div class="card"><b>4. 自分のスキル</b><p>土台に無いものを作る</p></div>
+</div>
+
+<h2>守ること</h2>
+<div class="card">
+  <ul class="auto">
+    <li>事業のデータを、土台に入れない</li>
+    <li>同じスキルを2か所に置かない。コピーせず、上乗せで合わせる</li>
+  </ul>
+</div>
+
+<h2>もっと詳しく</h2>
+<div class="links">
+  <a href="https://github.com/commons-ground/ground/blob/main/docs/how-commons-work.md">コモンズのしくみ<span>考え方、道具ごとの持ち方、直し方、新しいコモンズの作り方</span></a>
+  <a href="https://github.com/commons-ground/ground/blob/main/docs/getting-started.md">はじめかた<span>画面ごとの手順</span></a>
+  <a href="https://github.com/commons-ground/ground">ground のリポジトリ<span>スキルの一覧と中身</span></a>
+  <a href="https://github.com/commons-ground/winegrowers">ワイン生産者のコモンズ<span>畑・栽培のスキル、知識コモンズ</span></a>
+</div>
+
+<footer>このページは人が読む入口です。細かい説明と、AI が読む正本は GitHub の Markdown にあります。</footer>
+</main>
+</body>
+</html>

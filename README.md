@@ -1,5 +1,7 @@
 # ground
 
+**はじめての人は [入口のページ](https://commons-ground.github.io/ground/) から。** 1画面で全体と始め方が分かります。
+
 すべてのコモンズが使う**土台のコモンズ**です。家庭・会社・ワイン生産者の集まりなど、個別のコモンズは、ここのスキルを取り込んで自分たちに合わせて使います。ワイン生産者に固有のもの（畑・栽培のスキル、知識コモンズの入口）は [commons-ground/winegrowers](https://github.com/commons-ground/winegrowers) にあります。
 
 スキル（AIへの作業手順書）、DBの設計図、基本ルールを、ここでみんなで共有して直していきます。各自の事業データはここには入れず、それぞれのNotion・freee・Google Driveに置いたままにします。
