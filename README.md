@@ -1,10 +1,10 @@
 # ground
 
-いろいろなコモンズ（家庭、会社、ワイン生産者の集まりなど）の土台になる、Claudeの共有基盤です。ワイン生産者に固有のもの（畑・栽培のスキル、知識コモンズの入口）は [commons-ground/winegrowers](https://github.com/commons-ground/winegrowers) にあります。考え方は Notion の「コモンズの土と植物」。
+すべてのコモンズが使う**土台のコモンズ**です。家庭・会社・ワイン生産者の集まりなど、個別のコモンズは、ここのスキルを取り込んで自分たちに合わせて使います。ワイン生産者に固有のもの（畑・栽培のスキル、知識コモンズの入口）は [commons-ground/winegrowers](https://github.com/commons-ground/winegrowers) にあります。
 
 スキル（AIへの作業手順書）、DBの設計図、基本ルールを、ここでみんなで共有して直していきます。各自の事業データはここには入れず、それぞれのNotion・freee・Google Driveに置いたままにします。
 
-**はじめての人は [コモンズのしくみ](docs/how-commons-work.md) から読んでください。** はじめかたは [docs/getting-started.md](docs/getting-started.md)、全体の設計は [docs/design.md](docs/design.md)、向かう方角は [docs/north-star.md](docs/north-star.md) にあります。
+**はじめての人は [コモンズのしくみ](docs/how-commons-work.md) から読んでください。** 自分の Claude で使い始める手順は [はじめかた](docs/getting-started.md) にあります。
 
 ## 入れ方
 
