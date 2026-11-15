@@ -10,6 +10,7 @@ core の making-skills に従い、公式や公開のスキルで足りるもの
 | grants の grant-support | Anthropic `small-business` の `grant-rfp-writer` | Apache-2.0 | 日本の制度の探し先、交付決定前の着手・併用・処分制限、制度カタログ |
 | team の slide-design | Anthropic の pptx スキル（ほか google-workspace、Canva） | Anthropic の利用条件 | 聞き手目線のストーリーライン、日本語の見出し、ノート、数字の確認、場のパターン |
 | grape の spray-plan | `human-avatar/skills-for-agriculture` の `s4ag-pests` | MIT | 農薬取締法の使用基準、FRAC/IRACのローテーション、日本のワイン用ブドウの病害、醸造への影響、防除歴の点検 |
+| grape の terrain-reading | `human-avatar/skills-for-agriculture` の `s4ag-land-reading` | MIT | 国土地理院の標高データと航空写真での計算（傾斜・向き・周りとの高さ・窪地・冷気の流れ）、ワイン用ブドウの判断の目安、気温での確かめ方 |
 
 本家は、入っていればそれを呼び、無ければ GitHub の原文を毎回読む。だから本家が更新されると、その日から新しい版が使われ、上乗せの部分はそのまま残る。
 
