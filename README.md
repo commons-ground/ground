@@ -4,7 +4,7 @@
 
 スキル（AIへの作業手順書）、DBの設計図、基本ルールを、ここでみんなで共有して直していきます。各自の事業データはここには入れず、それぞれのNotion・freee・Google Driveに置いたままにします。
 
-はじめかたは [docs/getting-started.md](docs/getting-started.md)、全体の設計は [docs/design.md](docs/design.md)、向かう方角は [docs/north-star.md](docs/north-star.md) にあります。
+**はじめての人は [コモンズのしくみ](docs/how-commons-work.md) から読んでください。** はじめかたは [docs/getting-started.md](docs/getting-started.md)、全体の設計は [docs/design.md](docs/design.md)、向かう方角は [docs/north-star.md](docs/north-star.md) にあります。
 
 ## 入れ方
 
@@ -20,12 +20,13 @@ Claude Code では次の1行です。
 
 | プラグイン | 中身 |
 | --- | --- |
-| core（基盤・必須） | 基本ルール（basic-rules）、人に確認する線引き（when-to-ask）、人間向けの資料づくり（writing-for-humans）、情報の構造の読み取り（structure-reading）、図解（diagram） |
-| research（調べる・確かめる） | ポッドキャストの回の文字起こしと解説（podcast-notes）。文字起こしは共有のワークフロー（`.github/workflows/podcast-transcribe.yml`）を各自の非公開リポジトリから呼んで動かす |
-
-畑・醸造・販売・経理・補助金などの分野別プラグインは、これから順に足します。
-
-research を入れるときは、`/plugin install research --marketplace commons-ground/ground`。
+| core（基盤・必須） | 基本ルール、人に確認する線引き、提案のしかた、人間向けの資料づくり、情報の構造の読み取り、図解、スキルの作り方 |
+| research（調べる・確かめる） | 科学調査、総力調査、文献の登録・点検・照合、科学的な主張と論理の検証、ページの総合検証、外国語資料の翻訳、ポッドキャストの解説 |
+| team（組織運営・話し合い） | 場づくりの問い、スライドづくり、理事会の議事録 |
+| labor（人・労務） | 当月の出勤簿の予定、前月の給与支給記録 |
+| finance（経営） | 資金繰りの見通し、税務リスクの点検 |
+| grants（補助金・助成金） | 探す・見極める・申請書・交付後の追跡 |
+| equipment（機械・設備・機器） | 取扱説明書からの整備項目と部品の登録 |
 
 ## 直し方
 
