@@ -52,6 +52,19 @@ jobs:
 
 提案の様式（`.github/ISSUE_TEMPLATE/proposal.yml`）も、ground から写して置きます。
 
+## 別のリポジトリに書く（篩のアプリ）
+
+コモンズのカードで、直す先が ground のときは、篩が ground に直接プルリクエストを出します。使うのは GitHub アプリ「Commons Sieve」の鍵で、仕事のたびに1時間だけ有効な鍵を作ります（`actions/create-github-app-token`）。書き込みは呼び出し側と同じく `safe.py` の門を通り、`commons-ground` の外には書きません。
+
+アプリの鍵（組織の Actions secrets の `SIEVE_APP_ID`・`SIEVE_APP_PRIVATE_KEY`）が無いあいだは、これまでどおりカードにラベル `行き先:ground` を付け、人の Claude が harvest で運びます。
+
+呼び出し側の workflow の `secrets:` に、次の2行を足します。
+
+```yaml
+      SIEVE_APP_ID: ${{ secrets.SIEVE_APP_ID }}
+      SIEVE_APP_PRIVATE_KEY: ${{ secrets.SIEVE_APP_PRIVATE_KEY }}
+```
+
 ## 費用
 
 | もの | 費用 |
@@ -61,7 +74,6 @@ jobs:
 
 ## まだ無いもの
 
-- 別のリポジトリへの書き込み。いまの鍵は呼び出し側のリポジトリにしか書けないので、行き先が ground のカードにはラベル `行き先:ground` を付け、人の Claude が harvest で運ぶ
 - AI の返事の〔覚えておく〕を、自動で篩に渡す道。いまは harvest で拾う
 
 ## 中継に篩の入り口を受け持たせる（世話役が1回）

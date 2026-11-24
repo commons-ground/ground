@@ -25,6 +25,11 @@ on:
         required: true
       DISCORD_BOT_TOKEN:
         required: false
+      SIEVE_APP_ID:
+        description: 篩のアプリ（Commons Sieve）の App ID。あれば、行き先が別のリポジトリ（コモンズ → ground など）でも篩が直接書く
+        required: false
+      SIEVE_APP_PRIVATE_KEY:
+        required: false
 
 jobs:
   sieve:
@@ -56,6 +61,21 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: 篩のアプリの鍵があるか
+        id: cross
+        env:
+          APP_ID: ${{ secrets.SIEVE_APP_ID }}
+        run: '[ -n "$APP_ID" ] && echo "on=true" >> "$GITHUB_OUTPUT" || echo "篩のアプリの鍵が無いので、別のリポジトリには書かない"'
+
+      - name: 別のリポジトリに書く鍵を作る（この団体のリポジトリだけ・1時間で切れる）
+        id: crosstoken
+        if: steps.cross.outputs.on == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SIEVE_APP_ID }}
+          private-key: ${{ secrets.SIEVE_APP_PRIVATE_KEY }}
+          owner: commons-ground
+
       - name: 出来事・手順・スキルをそろえる
         id: prep
         env:
@@ -64,12 +84,20 @@ jobs:
           MEMBER_DIR: ${{ inputs.member_dir }}
           MODEL: ${{ inputs.model }}
           MAX_TURNS: ${{ inputs.max_turns }}
+          CROSS_ON: ${{ steps.cross.outputs.on }}
         run: |
           set -euo pipefail
           G="$RUNNER_TEMP/ground"
           git clone -q --depth 1 https://github.com/commons-ground/ground "$G"
           mkdir -p .sieve
           echo ".sieve/" >> .git/info/exclude
+          # 行き先が ground のときに直す写し。鍵は置かない（push は safe.py がその1回だけ鍵を渡す）
+          CROSS=false
+          if [ "$CROSS_ON" = "true" ] && [ "$GITHUB_REPOSITORY" != "commons-ground/ground" ]; then
+            git clone -q --depth 1 https://github.com/commons-ground/ground .sieve/ground
+            CROSS=true
+          fi
+          jq -n --argjson on "$CROSS" '{ground_copy: (if $on then ".sieve/ground" else null end), can_write_other_repos: $on}' > .sieve/cross.json
           # 出来事を、篩に要る項目だけにして渡す（合鍵は渡さない）
           case "$EVENT_NAME" in
             repository_dispatch)
@@ -99,6 +127,8 @@ jobs:
             # 外に文を出せる道（WebSearch など）は渡さない
             GHR="Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh search:*),Bash(gh label list:*)"
             GIT="Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git fetch:*),Bash(git checkout:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git rev-parse:*),Bash(git branch:*)"
+            # ground の写し（.sieve/ground）でも、同じ手元の操作だけ
+            for c in status diff log show fetch checkout switch add commit rev-parse branch; do GIT="$GIT,Bash(git -C .sieve/ground $c:*)"; done
             echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $G/tools/sieve/agent.md --allowedTools $GHR,$GIT,Bash(python3 $G/tools/sieve/safe.py:*),Read,Write,Edit,Glob,Grep"
             echo "marketplaces<<EOF"; printf '%s' "$MK"; echo "EOF"
             echo "plugins<<EOF"; printf '%s' "$PL"; echo "EOF"
@@ -108,6 +138,7 @@ jobs:
         id: claude
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          SIEVE_CROSS_TOKEN: ${{ steps.crosstoken.outputs.token }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_args: ${{ steps.prep.outputs.args }}
