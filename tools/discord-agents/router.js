@@ -27,6 +27,10 @@
 //   変数    SIEVE                （任意）JSON {"channel": "提案", "repo": "commons-ground/winegrowers"}。
 //                                あれば篩の入り口を受け持つ。そのリポジトリにも Commons Agents アプリを入れておく。
 //                                channel は DISCORD_CHANNELS にも入れておく
+//   変数    COMMONS_AI           （任意）JSON {"repo": "commons-ground/winegrowers", "user_id": "ボットのユーザーID"}。
+//                                あれば、コモンズのAI（ボット）へのメンションを拾い、/ai と同じ AI に答えさせる
+//                                （そのリポジトリに discord-mention の repository_dispatch を送る）。
+//                                #提案 でのメンションは篩が受け持つので、ここでは拾わない
 //
 // 守ること
 //   - 分身の返事は「🤖 ひろしのAI」と名乗って投稿する。@ で呼べるのは AI 用ロールと、その分身の持ち主だけ
@@ -81,7 +85,8 @@ async function poll(env) {
   const agents = json(env.AGENTS, {});
   const roleIds = Object.keys(agents);
   const sieve = json(env.SIEVE, null);
-  if (!roleIds.length && !sieve?.repo) return;
+  const commonsAi = json(env.COMMONS_AI, null);
+  if (!roleIds.length && !sieve?.repo && !commonsAi?.repo) return;
   for (const ch of await watchedChannels(env)) {
     const key = `last:${ch.id}`;
     const last = await env.STATE.get(key);
@@ -96,6 +101,9 @@ async function poll(env) {
     for (const m of msgs) {
       if (sieve?.repo && ch.name === sieve.channel && isProposal(m)) {
         await dispatchSieve(env, sieve, ch, m);
+      }
+      if (commonsAi?.repo && mentionsCommonsAi(m, commonsAi) && !(sieve?.repo && ch.name === sieve.channel)) {
+        if (await underLimit(env, "commons-ai")) await dispatchCommonsAi(env, commonsAi, ch, m);
       }
       const hop = Number((await env.STATE.get(`hop:${m.id}`)) || 0);
       const from = await env.STATE.get(`by:${m.id}`); // 分身の返事なら、その分身のロールID
@@ -147,6 +155,48 @@ async function dispatchSieve(env, sieve, ch, m) {
     }),
   });
   console.log(`dispatch sieve: ${res.status}`);
+}
+
+// 人が、コモンズのAI（ボット）をメンションしたか。ボットどうしの往復は起こさない
+function mentionsCommonsAi(m, ai) {
+  if (m.author?.bot || ![0, 19].includes(m.type)) return false;
+  const id = String(ai.user_id || "");
+  return Boolean(id) && ((m.mentions || []).some((u) => u.id === id) || (m.content || "").includes(`<@${id}>`) || (m.content || "").includes(`<@!${id}>`));
+}
+
+async function dispatchCommonsAi(env, ai, ch, m) {
+  const token = await installationToken(env, ai.repo).catch((e) => {
+    console.log(`token commons-ai: ${e.message}`);
+    return null;
+  });
+  if (!token) return;
+  const question = (m.content || "")
+    .replace(new RegExp(`<@!?${ai.user_id}>`, "g"), "")
+    .replace(/<@!?(\d+)>/g, "@メンバー")
+    .replace(/<@&(\d+)>/g, "@ロール")
+    .trim();
+  const res = await fetch(`https://api.github.com/repos/${ai.repo}/dispatches`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "discord-agents",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      event_type: "discord-mention",
+      client_payload: {
+        command: "mention",
+        question: question.slice(0, 2000),
+        channel_id: ch.id,
+        guild_id: env.DISCORD_GUILD_ID,
+        message_id: m.id,
+        user_id: m.author?.id || "",
+        user_name: m.member?.nick || m.author?.global_name || m.author?.username || "",
+      },
+    }),
+  });
+  console.log(`dispatch commons-ai: ${res.status}`);
 }
 
 async function underLimit(env, roleId) {
