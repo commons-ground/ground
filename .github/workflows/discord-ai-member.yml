@@ -1,0 +1,56 @@
+# コモンズの Discord の AI（/ai）の本体。各コモンズのリポジトリから呼び出して使う。
+# 呼び出し側の例は tools/discord-ai-member/README.md。
+name: discord-ai-member
+
+on:
+  workflow_call:
+    inputs:
+      payload:
+        description: 受け口から渡された client_payload（JSON の文字）
+        type: string
+        required: true
+      member_dir:
+        description: 呼び出し側のリポジトリの中の設定フォルダ（config.json と member.md）
+        type: string
+        default: discord
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+      DISCORD_BOT_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14  # Discord の合鍵は15分で切れる
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+      - uses: actions/checkout@v4
+        with:
+          repository: commons-ground/ground
+          path: ground
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install claude-agent-sdk requests
+      - name: 返事をする
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          MEMBER_DIR: ${{ github.workspace }}/self/${{ inputs.member_dir }}
+          PLUGIN_ROOTS: ${{ github.workspace }}/self:${{ github.workspace }}/ground
+        run: python ground/tools/discord-ai-member/run.py
+      - name: 失敗したら「考え中…」を直す
+        if: failure() || cancelled()
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+        run: python ground/tools/discord-ai-member/run.py --fail
