@@ -170,7 +170,8 @@ async function dispatch(env, roleId, agent, ch, m, hop, agents) {
     (text || "").replace(/<@&(\d+)>/g, (_, id) => `@${agents[id]?.name || "ロール"}`).replace(/<@!?(\d+)>/g, "@メンバー");
   const payload = {
     event_type: "discord-agent",
-    client_payload: {
+    // GitHub は client_payload の直下に10項目までしか受けないので、r の中にまとめる
+    client_payload: { r: {
       role_id: roleId,
       agent_name: agent.name,
       channel_id: ch.id,
@@ -186,7 +187,7 @@ async function dispatch(env, roleId, agent, ch, m, hop, agents) {
         .join("\n"),
       hop,
       reply_url: `${env.PUBLIC_URL || ""}/reply`,
-    },
+    } },
   };
   const res = await fetch(`https://api.github.com/repos/${agent.repo}/dispatches`, {
     method: "POST",
