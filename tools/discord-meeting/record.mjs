@@ -148,7 +148,7 @@ client.once(Events.ClientReady, async () => {
   await post(
     channel.id,
     `🔴 録音中です（${p.user_name || "参加者"}さんが開始）。\n` +
-      "全員が抜けるか `/record stop` で止まり、文字起こしと議事録をこのチャンネルに置きます。録られたくない人は、いったん抜けてください。",
+      "全員が抜けるか `/record stop` で止まり、文字起こしと議事録を #議事録 に置きます。録られたくない人は、いったん抜けてください。",
   );
 
   await done;

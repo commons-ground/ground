@@ -10,7 +10,7 @@ flowchart LR
   B -- repository_dispatch --> C["GitHub Actions<br>ボットが通話に入って録る"]
   C -- "全員抜ける / /record stop" --> D["文字にする<br>（faster-whisper）"]
   D --> E["Claude が議事録と<br>改善の候補を作る"]
-  E --> F["ボイスチャンネルのチャットに<br>議事録と文字起こし"]
+  E --> F["#議事録 に<br>議事録と文字起こし"]
   E --> G["#提案 に<br>〔提案〕として1件ずつ"]
 ```
 
@@ -18,7 +18,7 @@ flowchart LR
 - **話す人ごとに録る**：Discord は話す人ごとに音が分かれて届くので、誰が話したかを推測しなくてよい
 - **止まり方**：人間が全員抜けて1分たつ、`/record stop`、上限（既定180分）のどれか
 - **改善の候補は〔提案〕として出すだけ**：仕組みに入れるかどうかは、篩（ふるい）の仕組みが決める
-- **残し方**：音声はどこにも残さない。文字起こしと議事録は Discord にだけ置く。公開リポジトリの Actions で動くので、ログにも成果物にも中身を出さない
+- **残し方**：音声はどこにも残さない。文字起こしと議事録は Discord の `#議事録` に置く（各自の Claude もコネクタで読める）。通話のチャットにはリンクだけ書く。公開リポジトリの Actions で動くので、ログにも成果物にも中身を出さない
 - **知らせ方**：録り始めたらボイスチャンネルのチャットに「🔴 録音中」と書く。録られたくない人は抜けられる
 
 ## 置き場所
@@ -30,7 +30,7 @@ flowchart LR
 | 議事録と提案 | `digest.py`（core:harvest の1と2に従う Claude） |
 | 仕事の流れ | `.github/workflows/discord-meeting.yml`（各コモンズから呼び出す） |
 | コマンドと受け口 | `tools/discord-ai-member` の `commands.json`・`worker.js` |
-| 提案を出すチャンネル・上限額 | 呼び出し側の `discord/config.json` の `proposal_channel`・`meeting_max_budget_usd` |
+| 議事録・提案を出すチャンネル、上限額 | 呼び出し側の `discord/config.json` の `minutes_channel`・`proposal_channel`・`meeting_max_budget_usd` |
 
 ## 呼び出し側の workflow
 

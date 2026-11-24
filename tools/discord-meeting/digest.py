@@ -3,7 +3,7 @@
 
 1. コモンズのプラグイン入りの Claude が transcript.md を読み、core:harvest の1と2に従って
    議事録（要点・決まったこと・宿題・未決の問い）と、仕組みの改善の候補を作る
-2. 議事録と文字起こしのファイルを、通話したボイスチャンネルのチャットに置く
+2. 議事録と文字起こしのファイルを #議事録（config の minutes_channel）に置き、通話のチャットにはリンクを書く
 3. 改善の候補は、1件ずつ「〔提案〕」として提案のチャンネルに出す（入れるかどうかは篩の仕組みが決める）
 
 公開リポジトリの Actions で動くので、中身はログに出さない。実行ページには費用などの数字だけを残す。
@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -26,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "discord-ai-memb
 from run import plugin_dirs, split_text, write_summary  # noqa: E402
 
 API = "https://discord.com/api/v10"
+JST = timezone(timedelta(hours=9))
 TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 H = {"Authorization": f"Bot {TOKEN}"}
 NO_PING = {"parse": []}
@@ -132,15 +134,21 @@ def main() -> int:
     write_summary(info, config, origins)
     d = parse(answer)
 
-    date = meta.get("started_at", "")[:10]
-    head = f"📝 **{date} の通話の議事録**（{meta.get('channel_name', '')}）\n"
+    # 日付は日本時間で書く（meta は UTC）
+    started = datetime.fromisoformat(meta.get("started_at", "").replace("Z", "+00:00")).astimezone(JST)
+    date = started.strftime("%Y-%m-%d")
+    head = f"📝 **{date} {started:%H:%M} の通話の議事録**（{meta.get('channel_name', '')}）\n"
     minutes = d["minutes"] or "議事録を作れませんでした。文字起こしのファイルを見てください。"
+    # 議事録は、各自の Claude からも読めるテキストチャンネル（#議事録）に置いて残す。無ければ通話のチャットに置く
+    mc = find_channel(meta["guild_id"], config.get("minutes_channel", "議事録")) or vc
     chunks = split_text(head + minutes)
-    first = post(vc, chunks[0])
+    first = post(mc, chunks[0])
     for c in chunks[1:]:
-        post(vc, c)
-    post_file(vc, "文字起こし（機械なので聞き間違いがあります）", transcript)
-    link = f"https://discord.com/channels/{meta['guild_id']}/{vc}/{first['id']}"
+        post(mc, c)
+    post_file(mc, "文字起こし（機械なので聞き間違いがあります）", transcript)
+    link = f"https://discord.com/channels/{meta['guild_id']}/{mc}/{first['id']}"
+    if mc != vc:
+        post(vc, f"📝 議事録を置きました：{link}")
 
     if d["proposals"]:
         pc = find_channel(meta["guild_id"], config.get("proposal_channel", "提案")) or vc
