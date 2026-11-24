@@ -1,0 +1,92 @@
+# コモンズの GitHub の AI（@claude）の本体。各コモンズのリポジトリから呼び出して使う。
+# Discord の AI（discord-ai-member）と同じ「ふるまい」と「覚えていること」を読むので、
+# どちらの入口から呼んでも同じ AI として答える。仕組みは tools/ai-member/README.md。
+name: github-ai-member
+
+on:
+  workflow_call:
+    inputs:
+      member_repo:
+        description: ふるまいと覚えていることを置いたリポジトリ（空なら呼び出し側）
+        type: string
+        default: ""
+      member_dir:
+        description: その中のフォルダ（member.md・memory.md・config.json）
+        type: string
+        default: discord
+      model:
+        type: string
+        default: claude-sonnet-5-5
+      max_turns:
+        type: number
+        default: 40
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+jobs:
+  reply:
+    # @claude と書かれたときだけ動く（書き込み権限のある人の呼びかけだけに答えるのは action 側で確かめる）
+    if: >-
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: ふるまい・覚えていること・スキルをそろえる
+        id: prep
+        env:
+          MEMBER_REPO: ${{ inputs.member_repo || github.repository }}
+          MEMBER_DIR: ${{ inputs.member_dir }}
+          MODEL: ${{ inputs.model }}
+          MAX_TURNS: ${{ inputs.max_turns }}
+        run: |
+          set -euo pipefail
+          # 作業中のリポジトリに混ざらないよう、作業場所の外に置く
+          G="$RUNNER_TEMP/ground"
+          git clone -q --depth 1 https://github.com/commons-ground/ground "$G"
+          if [ "$MEMBER_REPO" = "$GITHUB_REPOSITORY" ]; then
+            M="$GITHUB_WORKSPACE"
+          else
+            M="$RUNNER_TEMP/member"
+            git clone -q --depth 1 "https://github.com/$MEMBER_REPO" "$M"
+          fi
+          D="$M/$MEMBER_DIR"
+          P="$RUNNER_TEMP/ai-member-prompt.md"
+          cat "$D/member.md" > "$P"
+          if [ -f "$D/memory.md" ]; then
+            printf '\n\n' >> "$P"; cat "$D/memory.md" >> "$P"
+          fi
+          printf '\n\n' >> "$P"
+          sed "s|{{MEMBER_PATH}}|$MEMBER_REPO の $MEMBER_DIR/memory.md|g" "$G/tools/ai-member/github.md" >> "$P"
+          # スキル：呼び出し側 → 記憶の置き場 → ground の順。同じ名前は先のものを使う
+          ARGS="--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $P --allowedTools WebSearch,WebFetch"
+          declare -A seen=()
+          for root in "$GITHUB_WORKSPACE" "$M" "$G"; do
+            [ -d "$root/plugins" ] || continue
+            for p in "$root"/plugins/*/; do
+              n=$(basename "$p")
+              [ -d "$p/skills" ] && [ -z "${seen[$n]:-}" ] || continue
+              seen[$n]=1
+              ARGS="$ARGS --plugin-dir ${p%/}"
+            done
+          done
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+          echo "読み込んだプラグイン：${!seen[*]}"
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: ${{ steps.prep.outputs.args }}
