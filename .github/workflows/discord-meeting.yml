@@ -1,0 +1,96 @@
+# コモンズの Discord の通話を録って、文字起こし → 議事録と改善の提案まで作る。各コモンズのリポジトリから呼び出して使う。
+# 流れと設定は tools/discord-meeting/README.md。
+# 公開リポジトリで動くので、音声・文字起こし・議事録はログにも成果物にも残さない（Discord にだけ置く）。
+name: discord-meeting
+
+on:
+  workflow_call:
+    inputs:
+      payload:
+        description: 受け口から渡された client_payload（JSON の文字）
+        type: string
+        required: true
+      member_dir:
+        description: 呼び出し側のリポジトリの中の設定フォルダ（config.json と member.md）
+        type: string
+        default: discord
+      max_minutes:
+        description: 録る長さの上限（分）
+        type: number
+        default: 180
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+      DISCORD_BOT_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  meeting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: 合鍵を伏せ字にする
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+        run: echo "::add-mask::$(echo "$PAYLOAD" | jq -r .token)"
+      - uses: actions/checkout@v4
+        with:
+          path: self
+      - uses: actions/checkout@v4
+        with:
+          repository: commons-ground/ground
+          path: ground
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 録る
+        working-directory: ground/tools/discord-meeting
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          OUT_DIR: ${{ runner.temp }}/rec
+          MAX_MINUTES: ${{ inputs.max_minutes }}
+        run: |
+          npm ci --silent --no-audit --no-fund
+          node record.mjs
+      - name: 録れたか
+        id: rec
+        run: test -f "$RUNNER_TEMP/rec/meta.json" && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "録れなかったので、ここで終わる"
+      - uses: actions/setup-python@v5
+        if: steps.rec.outputs.ok == 'true'
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        if: steps.rec.outputs.ok == 'true'
+        with:
+          path: ~/.cache/huggingface
+          key: whisper-large-v3-turbo
+      - name: 文字にする
+        if: steps.rec.outputs.ok == 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install -q -r ground/tools/podcast/requirements.txt
+          python ground/tools/discord-meeting/transcribe.py "$RUNNER_TEMP/rec"
+      - name: 議事録と提案を作って置く
+        if: steps.rec.outputs.ok == 'true'
+        env:
+          REC_DIR: ${{ runner.temp }}/rec
+          MEMBER_DIR: ${{ github.workspace }}/self/${{ inputs.member_dir }}
+          PLUGIN_ROOTS: ${{ github.workspace }}/self:${{ github.workspace }}/ground
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          pip install -q claude-agent-sdk requests
+          python ground/tools/discord-meeting/digest.py
+      - name: 失敗したらチャンネルで知らせる
+        if: failure() && steps.rec.outputs.ok == 'true'
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          CH=$(jq -r .channel_id "$RUNNER_TEMP/rec/meta.json")
+          curl -s -o /dev/null -X POST "https://discord.com/api/v10/channels/$CH/messages" \
+            -H "Authorization: Bot $DISCORD_BOT_TOKEN" -H "Content-Type: application/json" \
+            -d '{"content":"録音のあと、文字起こしか議事録づくりで止まりました。世話役の Claude に「discord-meeting の失敗を見て」と頼んでください。","allowed_mentions":{"parse":[]}}'
