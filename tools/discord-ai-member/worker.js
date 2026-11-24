@@ -79,7 +79,7 @@ export default {
       return say("⏳ 録音の準備をしています（ボットが入るまで1分ほど）。");
     }
     if (name === "record" && sub?.name === "stop") {
-      return say(`${STOP_MARK}（${userName || "参加者"}さん）。文字起こしと議事録は、できしだいボイスチャンネルのチャットに置きます。`);
+      return say(`${STOP_MARK}（${userName || "参加者"}さん）。文字起こしと議事録は、できしだい #議事録 に置きます。`);
     }
     if (name === "propose" || name === "コモンズに提案") {
       let extra = { text: String(options.text || "") };
