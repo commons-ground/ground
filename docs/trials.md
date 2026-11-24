@@ -19,3 +19,4 @@
 | 2026-11-25 | 提案の置き場を Discord の `#提案` に1本化（書けば提案、/propose・「コモンズに提案」も `#提案` に載る） | ひろしさん（Discord で） | ground `tools/discord-ai-member` | 2026-12-25 | 試行中 |
 | 2026-11-25 | 篩（ふるい）：提案を篩のカード（Issue）にまとめ、一般化し、影響の小・中・大で振り分けてから入れる。小は試行一覧にも Discord にも出さない | ひろしさんの依頼 | ground `plugins/core/skills/sieve`・`tools/sieve`・`docs/sieve.md` | 2026-12-25 | 試行中 |
 | 2026-11-25 | 篩に3つ足す：`#提案` に直接書いた発言を中継の見回りで拾う、書き込みの前の機械の点検（門 `safe.py`）、見直しで 👍・👎 を7日聞く | ひろしさん | ground `tools/sieve`・`tools/discord-agents/router.js`・`plugins/core/skills/sieve` | 2026-12-25 | 試行中 |
+| 2026-11-24 | 自動で動く仕組みは「出来事 → すでにある見回りへの相乗り → 新しい定期実行」の順で起こし方を選ぶ（making-skills の7） | ひろしさん | ground `plugins/core/skills/making-skills` | 2026-12-24 | 試行中 |
