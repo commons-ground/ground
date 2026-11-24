@@ -9,8 +9,8 @@ AI とのやり取りは、すべて Discord のコマンドの形にそろえ�
 | コマンド | すること | どこで動くか |
 |:--|:--|:--|
 | `/ai 質問` | AI に聞く | GitHub Actions の Claude |
-| `/propose 内容` | 提案を〔提案〕として書く。篩の仕組みがあとで拾う | 受け口だけ |
-| 発言の「アプリ」→「Propose to Commons」 | その発言を〔提案〕として書き直す | 受け口だけ |
+| `/propose 内容` | 提案を `#提案` に載せる（`#提案` に直接書いてもよい）。篩の仕組みがあとで拾う | GitHub Actions（ボットの鍵で書く） |
+| 発言の「アプリ」→「コモンズに提案」 | その発言を `#提案` に載せる | GitHub Actions |
 | `/record start`・`/record stop` | 通話を録って、議事録と提案まで作る（`tools/discord-meeting`） | GitHub Actions |
 | `/help` | コマンドの一覧（本人にだけ見える） | 受け口だけ |
 

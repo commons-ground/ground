@@ -143,7 +143,7 @@ def main() -> int:
     link = f"https://discord.com/channels/{meta['guild_id']}/{vc}/{first['id']}"
 
     if d["proposals"]:
-        pc = find_channel(meta["guild_id"], config.get("proposal_channel", "スキルの相談")) or vc
+        pc = find_channel(meta["guild_id"], config.get("proposal_channel", "提案")) or vc
         for x in d["proposals"]:
             text = f"〔提案〕{x['title']}\n{x.get('body', '')}\n-# {date} の通話から、{config.get('name', 'AI')}が拾った候補（{link}）"
             for c in split_text(text):
