@@ -4,8 +4,8 @@
 //   /ai        … 「考え中…」を返し、repository_dispatch（discord-interaction）でリポジトリの Claude に渡す
 //   /record start … 「準備しています」を返し、repository_dispatch（discord-record）で録音の仕事を起こす
 //   /record stop … 「⏹ 録音を止めます」と書く。録音中のボットがこの書き込みを合図に止まる
-//   /propose      … 「〔提案〕…」としてその場に書く。篩の仕組みがあとで拾う
-//   メッセージの「アプリ」→「Propose to Commons」… その発言を〔提案〕として書き直す
+//   /propose      … 「〔提案〕…」としてその場に書き、repository_dispatch（sieve-intake）で篩の仕事を起こす
+//   メッセージの「アプリ」→「Propose to Commons」… その発言を〔提案〕として書き直し、篩の仕事を起こす
 //   /help    … コマンドの一覧（本人にだけ見える）
 // Claude の鍵は持たない。返事は runner が、Discord から渡された一時的な合鍵（interaction token、15分有効）で書き戻す。
 //
@@ -82,19 +82,41 @@ export default {
       return say(`${STOP_MARK}（${userName || "参加者"}さん）。文字起こしと議事録は、できしだいボイスチャンネルのチャットに置きます。`);
     }
     if (name === "propose") {
-      return say(`〔提案〕${String(options.text || "").trim()}\n-# ${userName || "参加者"}さんが /propose で出しました`);
+      const text = String(options.text || "").trim();
+      ctx.waitUntil(toSieve(env, base, { text, author: userName, link: "" }));
+      return say(`〔提案〕${text}\n-# ${userName || "参加者"}さんが /propose で出しました。篩にかけます`);
     }
     if (name === "Propose to Commons") {
       const target = body.data?.resolved?.messages?.[body.data?.target_id];
       if (!target?.content) return say("その発言には、提案にできる文がありません。", true);
       const author = target.author?.global_name || target.author?.username || "参加者";
       const link = `https://discord.com/channels/${body.guild_id}/${body.channel_id}/${target.id}`;
-      return say(`〔提案〕${target.content.slice(0, 1700)}\n-# ${author}さんの発言（${link}）を、${userName || "参加者"}さんが提案にしました`);
+      ctx.waitUntil(toSieve(env, base, { text: target.content.slice(0, 1700), author, link }));
+      return say(`〔提案〕${target.content.slice(0, 1700)}\n-# ${author}さんの発言（${link}）を、${userName || "参加者"}さんが提案にしました。篩にかけます`);
     }
     if (name === "help") return say(HELP, true);
     return say("そのコマンドは、まだこのボットが知りません。`/help` で一覧を見られます。", true);
   },
 };
+
+// 提案を篩の仕事（ground の sieve.yml）に渡す。渡せなくても〔提案〕の発言は残るので、harvest で拾える
+async function toSieve(env, base, { text, author, link }) {
+  if (!text) return;
+  const res = await fetch(`https://api.github.com/repos/${env.REPO}/dispatches`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "discord-ai-member",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      event_type: "sieve-intake",
+      client_payload: { ...base, command: "propose", text, author, link },
+    }),
+  });
+  if (!res.ok) console.log(`sieve dispatch failed: ${res.status}`);
+}
 
 async function dispatch(env, payload, failText) {
   const res = await fetch(`https://api.github.com/repos/${env.REPO}/dispatches`, {

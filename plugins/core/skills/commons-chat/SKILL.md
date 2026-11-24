@@ -49,7 +49,7 @@ description: コモンズの話し合いの場（Discord）を、自分の Claud
 
 ## GitHub につないでいない人の提案
 
-propose-change の4の形で、`#スキルの相談` に「〔提案〕」で始めて書く。GitHub につないでいる参加者の Claude が、harvest で拾ってプルリクエストにする。拾われたら、そのスレッドにリンクが返る。
+Discord の `/propose` で出してもらう（形は propose-change の4に近いほどよいが、短くてもよい）。篩の係（core の sieve）が自動で受け付け、篩のカードのリンクを同じ場所に返す。`#スキルの相談` に「〔提案〕」で始めて書いたものは、harvest で拾われて篩に入る。
 
 ## Discord の画面から AI を使う（人に案内するとき）
 

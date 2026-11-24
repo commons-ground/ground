@@ -1,6 +1,6 @@
 # 試行一覧
 
-トライアル期間のあいだ、話し合いや使い方から出たアイデアは、まず入れてみて、おかしければ取り下げる。ここはその一覧。足し方と見直し方は core の harvest スキルにある。
+トライアル期間のあいだ、話し合いや使い方から出たアイデアは、まず入れてみて、おかしければ取り下げる。ここはその一覧。足し方と見直し方は core の harvest と sieve スキルにある。載せるのは影響が中以上のもの（[篩](sieve.md)）。
 
 - **状態**：試行中 → 定着 か 取り下げ
 - **見直し**：入れてから1か月が目安。分からなければ1か月延ばし、2回延ばしたら取り下げる
@@ -16,3 +16,4 @@
 | 2026-11-25 | GitHub の `@claude` に、Discord の AI と同じふるまい・覚えていることで答える。やりとりの「〔覚えておく〕」を harvest で `memory.md` に戻す | ひろしさん | ground `tools/ai-member`・`.github/workflows/github-ai*.yml` | 2026-12-25 | 試行中 |
 | 2026-11-25 | Discord の通話を `/record` で録り、文字起こし・議事録・〔提案〕まで自動で出す | ひろしさんの依頼 | ground `tools/discord-meeting` | 2026-12-25 | 試行中 |
 | 2026-11-25 | Discord での AI とのやり取りをコマンドにそろえる（/ai・/propose・/record・/help・「Propose to Commons」） | ひろしさんの依頼 | ground `tools/discord-ai-member` | 2026-12-25 | 試行中 |
+| 2026-11-24 | 篩（ふるい）：提案を篩のカード（Issue）にまとめ、一般化し、影響の小・中・大で振り分けてから入れる。小は試行一覧にも Discord にも出さない | ひろしさんの依頼 | ground `plugins/core/skills/sieve`・`tools/sieve`・`docs/sieve.md` | 2026-12-24 | 試行中 |
