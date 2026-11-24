@@ -57,10 +57,19 @@ def split_text(text: str) -> list[str]:
 
 
 def post_answer(p: dict, text: str) -> None:
-    """「考え中…」を答えの1つ目に書き換え、続きは追いメッセージにする。"""
-    base = f"{API}/webhooks/{p['application_id']}/{p['token']}"
+    """答えを書く。/ai なら「考え中…」を書き換え、メンションなら元の発言への返信として書く。"""
     no_ping = {"parse": []}  # @everyone などで人を呼ばない
     chunks = split_text(text)
+    if not p.get("token"):
+        # メンションから来たとき（中継の discord-mention）。合鍵が無いので、ボットの鍵で返信する
+        h = {"Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}"}
+        for i, c in enumerate(chunks):
+            body = {"content": c, "allowed_mentions": no_ping}
+            if i == 0 and p.get("message_id"):
+                body["message_reference"] = {"message_id": p["message_id"], "fail_if_not_exists": False}
+            requests.post(f"{API}/channels/{p['channel_id']}/messages", headers=h, json=body, timeout=30).raise_for_status()
+        return
+    base = f"{API}/webhooks/{p['application_id']}/{p['token']}"
     r = requests.patch(f"{base}/messages/@original", json={"content": chunks[0], "allowed_mentions": no_ping}, timeout=30)
     r.raise_for_status()
     for c in chunks[1:]:
@@ -211,7 +220,7 @@ def main() -> int:
 
     question = (p.get("question") or "").strip()
     if not question:
-        post_answer(p, "聞きたいことを `/ai` のあとに書いてください。")
+        post_answer(p, "聞きたいことを `/ai` のあと（またはメンションのあと）に書いてください。")
         return 0
 
     roots = [Path(x) for x in os.environ.get("PLUGIN_ROOTS", "").split(":") if x]
@@ -219,7 +228,7 @@ def main() -> int:
     history = recent_messages(p.get("channel_id", ""), config.get("history_messages", 20))
     prompt = (
         f"Discord のサーバー「{config.get('community', 'コモンズ')}」で、"
-        f"{p.get('user_name') or '参加者'}さんが /ai で質問しました。{config.get('name', 'AI')}として答えてください。\n\n"
+        f"{p.get('user_name') or '参加者'}さんが {'メンション' if p.get('command') == 'mention' else '/ai'} で質問しました。{config.get('name', 'AI')}として答えてください。\n\n"
         + (f"参考：このチャンネルの直近のやりとり（古い順）\n---\n{history}\n---\n\n" if history else "")
         + f"質問：{question}"
     )
@@ -227,7 +236,8 @@ def main() -> int:
 
     answer, info = asyncio.run(run_agent(prompt, system_prompt, config, plugins, work))
     write_summary(info, config, origins)
-    header = f"> {question[:300]}\n\n"  # 何への答えかが見えるように、質問を引用で添える
+    # 何への答えかが見えるように、質問を引用で添える（メンションは元の発言への返信になるので要らない）
+    header = "" if p.get("command") == "mention" else f"> {question[:300]}\n\n"
     post_answer(p, header + (answer or FAIL_TEXT))
     return 0
 
