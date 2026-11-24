@@ -57,6 +57,7 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib
           p = json.loads(os.environ["PAYLOAD"])
+          p = p.get("r", p)
           tmp = pathlib.Path(os.environ["RUNNER_TEMP"])
           ws = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
           name = p.get("agent_name", "AI")
@@ -109,6 +110,7 @@ jobs:
           python3 - <<'PY'
           import json, os, pathlib, urllib.request
           p = json.loads(os.environ["PAYLOAD"])
+          p = p.get("r", p)
           # 中継に「このリポジトリの、この workflow から来た」ことを示す身分証明（OIDC）をもらう。合言葉は要らない
           oidc_req = urllib.request.Request(os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=commons-discord-agents",
               headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
