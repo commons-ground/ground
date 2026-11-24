@@ -1,0 +1,22 @@
+# ground 自身の篩。このリポジトリの提案の Issue（ラベル「篩」）とそのコメントを、sieve.yml で運ぶ。
+# 本体は sieve.yml。各コモンズは、自分のリポジトリから sieve.yml を呼ぶ（tools/sieve/README.md）。
+name: sieve-here
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  actions: read
+
+jobs:
+  sieve:
+    uses: ./.github/workflows/sieve.yml
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

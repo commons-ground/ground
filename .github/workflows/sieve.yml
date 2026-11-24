@@ -1,0 +1,123 @@
+# 篩（ふるい）の仕事の本体。各コモンズのリポジトリから呼び出して使う。
+# 提案の出来事（Discord の /propose・「コモンズに提案」、提案の Issue、カードへのコメント）が1つ起きるたびに1回だけ動き、
+# core:sieve の手順で、まとめる → 一般化する → 影響で振り分ける → 入れる・取り下げる、を1件ぶん進める。
+# 定期実行は使わない。見直しの日が過ぎた試行は、この仕事が動くたびについでに見る。
+# 仕組みは tools/sieve/README.md、設計は docs/sieve.md。
+name: sieve
+
+on:
+  workflow_call:
+    inputs:
+      member_dir:
+        description: 呼び出し側の設定フォルダ（config.json の sieve_channel を読む）
+        type: string
+        default: discord
+      model:
+        type: string
+        default: claude-sonnet-5-5
+      max_turns:
+        type: number
+        default: 40
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+      DISCORD_BOT_TOKEN:
+        required: false
+
+jobs:
+  sieve:
+    # 提案の出来事だけで動く。篩自身が作ったカードやコメントでは動かない（往復を防ぐ）
+    if: >-
+      github.event_name == 'repository_dispatch' ||
+      (github.event_name == 'issues' && github.event.issue.user.type != 'Bot' && (contains(github.event.issue.labels.*.name, '篩') || startsWith(github.event.issue.title, '〔提案〕'))) ||
+      (github.event_name == 'issue_comment' && !github.event.issue.pull_request && contains(github.event.issue.labels.*.name, '篩') && github.event.comment.user.type != 'Bot')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      # 同じリポジトリの篩は1つずつ動かす（重なりの判定がぶつからないように）
+      group: sieve-${{ github.repository }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+      actions: read
+    steps:
+      - name: 合鍵を伏せ字にする
+        if: github.event_name == 'repository_dispatch'
+        env:
+          TOKEN: ${{ github.event.client_payload.token }}
+        run: '[ -n "$TOKEN" ] && echo "::add-mask::$TOKEN" || true'
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 出来事・手順・スキルをそろえる
+        id: prep
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PATH_JSON: ${{ github.event_path }}
+          MEMBER_DIR: ${{ inputs.member_dir }}
+          MODEL: ${{ inputs.model }}
+          MAX_TURNS: ${{ inputs.max_turns }}
+        run: |
+          set -euo pipefail
+          G="$RUNNER_TEMP/ground"
+          git clone -q --depth 1 https://github.com/commons-ground/ground "$G"
+          mkdir -p .sieve
+          echo ".sieve/" >> .git/info/exclude
+          # 出来事を、篩に要る項目だけにして渡す（合鍵は渡さない）
+          case "$EVENT_NAME" in
+            repository_dispatch)
+              jq '{kind: "discord-propose", text: .client_payload.text, proposer: .client_payload.user_name, author: (.client_payload.source_author // .client_payload.user_name), link: (.client_payload.source_link // "")}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
+            issues)
+              jq '{kind: "issue-opened", number: .issue.number, url: .issue.html_url, title: .issue.title, body: .issue.body, proposer: .issue.user.login}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
+            issue_comment)
+              jq '{kind: "issue-comment", number: .issue.number, url: .issue.html_url, title: .issue.title, comment: .comment.body, commenter: .comment.user.login}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
+          esac
+          CH=""
+          [ -f "$MEMBER_DIR/config.json" ] && CH=$(jq -r '.sieve_channel // ""' "$MEMBER_DIR/config.json")
+          echo "SIEVE_CHANNEL=$CH" >> "$GITHUB_ENV"
+          echo "SIEVE_TOOLS=$G/tools/sieve" >> "$GITHUB_ENV"
+          MK=""; PL=""; NAMES=""
+          for root in "$GITHUB_WORKSPACE" "$G"; do
+            f="$root/.claude-plugin/marketplace.json"
+            [ -f "$f" ] || continue
+            name=$(jq -r .name "$f")
+            case " $NAMES " in *" $name "*) continue;; esac
+            NAMES="$NAMES $name"
+            MK="$MK$root"$'\n'
+            PL="$PL$(jq -r --arg m "$name" '.plugins[].name + "@" + $m' "$f")"$'\n'
+          done
+          {
+            echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $G/tools/sieve/agent.md --allowedTools Bash(gh:*),Bash(git:*),Bash(python3:*),Read,Write,Edit,Glob,Grep,WebSearch"
+            echo "marketplaces<<EOF"; printf '%s' "$MK"; echo "EOF"
+            echo "plugins<<EOF"; printf '%s' "$PL"; echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: anthropics/claude-code-action@v1
+        id: claude
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: ${{ steps.prep.outputs.args }}
+          plugin_marketplaces: ${{ steps.prep.outputs.marketplaces }}
+          plugins: ${{ steps.prep.outputs.plugins }}
+          prompt: |
+            篩の仕事です。.sieve/event.json の出来事を、core:sieve の手順で1件ぶん進めてください。
+            手順と決まりは、システムプロンプトの「篩の仕事」にあります。
+
+      - name: 受け口から来た提案なら、出した本人にだけ見える1行で、篩のカードを返す
+        if: always() && github.event_name == 'repository_dispatch' && github.event.client_payload.token != ''
+        env:
+          APP_ID: ${{ github.event.client_payload.application_id }}
+          TOKEN: ${{ github.event.client_payload.token }}
+        run: |
+          [ -f .sieve/result.json ] || { echo "結果が無い"; exit 0; }
+          MSG=$(jq -r '"🧺 篩で受け付けました（" + (.tier // "?") + "）：" + (.summary // "") + "\n" + (.card_url // "")' .sieve/result.json)
+          jq -n --arg c "$MSG" '{content: $c, flags: 64, allowed_mentions: {parse: []}}' \
+            | curl -sS -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' \
+                --data @- "https://discord.com/api/v10/webhooks/$APP_ID/$TOKEN" || true

@@ -251,6 +251,7 @@ AI を動かす部分（runner と受け口）は、今は最初の家庭のコ�
 - [はじめかた](getting-started.md)：自分の Claude に入れる手順
 - [プラグインとDBの設計図](plugins-and-schemas.md)：プラグインごとの中身と、表の論理名
 - [北極星のアイデア](north-star.md)：向かう方角と、共有のルールの決め方
+- [篩](sieve.md)：出てきた提案を、まとめて振り分けてから入れる仕組み（試行）
 - [本家のスキル](upstream-skills.md)：公式などのスキルをどう取り込んでいるか
 - [旧案と経緯](history.md)：検討して変えた案と、移行の記録
 - ワイン生産者のコモンズ（畑・栽培、知識コモンズ）は [commons-ground/winegrowers](https://github.com/commons-ground/winegrowers)
