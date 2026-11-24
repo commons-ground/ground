@@ -1,6 +1,7 @@
 name: auto-merge
 # プルリクエストが出たら自動マージを予約する。validate が通った時点で main に入る。
 # 人の確認を待ちたいときは、ラベル「人の確認」を付ける（付いている間は予約しない・予約を外す）。
+# 基本ルール・審査ルールのファイルに触れるプルリクエストには、このラベルを自動で付ける（付け忘れても先にマージされない）。
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
@@ -12,11 +13,24 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
+      - name: 基本ルール・審査ルールに触れていれば、ラベル「人の確認」を自動で付ける
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: |
+          # 審査ルール＝自動マージ・validate・篩の振り分け・このリポジトリの変え方
+          HIT=$(gh pr view "$PR" --json files -q '.files[].path' | grep -E '^(plugins/core/skills/basic-rules/|plugins/core/skills/sieve/SKILL\.md$|\.github/workflows/(auto-merge|validate)\.yml$|CLAUDE\.md$)' || true)
+          if [ -n "$HIT" ]; then
+            printf '人の確認が要るファイル：\n%s\n' "$HIT"
+            gh pr edit "$PR" --add-label "人の確認" || true
+            echo "hold=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: 自動マージを予約する（ラベル「人の確認」があれば外す）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.html_url }}
-          HOLD: ${{ contains(github.event.pull_request.labels.*.name, '人の確認') }}
+          HOLD: ${{ contains(github.event.pull_request.labels.*.name, '人の確認') || steps.guard.outputs.hold == 'true' }}
         run: |
           if [ "$HOLD" = "true" ]; then
             gh pr merge --disable-auto "$PR" || true
