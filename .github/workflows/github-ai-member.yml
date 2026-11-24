@@ -71,22 +71,43 @@ jobs:
           fi
           printf '\n\n' >> "$P"
           sed "s|{{MEMBER_PATH}}|$MEMBER_REPO の $MEMBER_DIR/memory.md|g" "$G/tools/ai-member/github.md" >> "$P"
-          # スキル：呼び出し側 → 記憶の置き場 → ground の順。同じ名前は先のものを使う
-          ARGS="--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $P --allowedTools WebSearch,WebFetch"
-          declare -A seen=()
+          # スキル：呼び出し側・記憶の置き場・ground のマーケットプレイスから全部入れる。
+          # （--plugin-dir は action の claude_args では最後の1つしか残らないので使わない）
+          MK=""; PL=""; NAMES=""
           for root in "$GITHUB_WORKSPACE" "$M" "$G"; do
-            [ -d "$root/plugins" ] || continue
-            for p in "$root"/plugins/*/; do
-              n=$(basename "$p")
-              [ -d "$p/skills" ] && [ -z "${seen[$n]:-}" ] || continue
-              seen[$n]=1
-              ARGS="$ARGS --plugin-dir ${p%/}"
-            done
+            f="$root/.claude-plugin/marketplace.json"
+            [ -f "$f" ] || continue
+            name=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["name"])' "$f")
+            case " $NAMES " in *" $name "*) continue;; esac
+            NAMES="$NAMES $name"
+            MK="$MK$root"$'\n'
+            PL="$PL$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print("\n".join(p["name"]+"@"+d["name"] for p in d["plugins"]))' "$f")"$'\n'
           done
-          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
-          echo "読み込んだプラグイン：${!seen[*]}"
+          {
+            echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $P --allowedTools WebSearch,WebFetch"
+            echo "marketplaces<<EOF"; printf '%s' "$MK"; echo "EOF"
+            echo "plugins<<EOF"; printf '%s' "$PL"; echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          printf '読み込むプラグイン：\n%s' "$PL"
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_args: ${{ steps.prep.outputs.args }}
+          plugin_marketplaces: ${{ steps.prep.outputs.marketplaces }}
+          plugins: ${{ steps.prep.outputs.plugins }}
+
+      - name: 失敗したら、Claude が返したエラーだけを見せる（質問や答えの中身は出さない）
+        if: failure()
+        env:
+          OUT: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          [ -n "$OUT" ] && [ -f "$OUT" ] || { echo "実行の記録がない"; exit 0; }
+          python3 - "$OUT" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          for m in data if isinstance(data, list) else [data]:
+              if isinstance(m, dict) and m.get("type") == "result" and m.get("is_error"):
+                  print("エラー：", str(m.get("result") or m.get("errors") or "")[:500])
+          PY
