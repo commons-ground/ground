@@ -99,7 +99,9 @@ async function poll(env) {
       }
       const hop = Number((await env.STATE.get(`hop:${m.id}`)) || 0);
       const from = await env.STATE.get(`by:${m.id}`); // 分身の返事なら、その分身のロールID
-      for (const roleId of m.mention_roles || []) {
+      // 本文の <@&ID> も見る（コネクタやボットの投稿は通知を切っているので mention_roles が空になる）
+      const mentioned = new Set([...(m.mention_roles || []), ...[...(m.content || "").matchAll(/<@&(\d+)>/g)].map((x) => x[1])]);
+      for (const roleId of mentioned) {
         const agent = agents[roleId];
         if (!agent || roleId === from) continue;
         if (hop >= MAX_HOPS) continue;
