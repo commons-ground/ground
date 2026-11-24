@@ -2,6 +2,8 @@
 
 トライアル期間のあいだ、話し合いや使い方から出たアイデアは、まず入れてみて、おかしければ取り下げる。ここはその一覧。足し方と見直し方は core の harvest スキルにある。
 
+篩（core の sieve）を通して入った試行は、ここには書かず、各コモンズの提案箱の Issue（ラベル `ふるい:試行中`）を正本にする：[ground](https://github.com/commons-ground/ground/issues?q=label%3A%22%E3%81%B5%E3%82%8B%E3%81%84%3A%E8%A9%A6%E8%A1%8C%E4%B8%AD%22)・[winegrowers](https://github.com/commons-ground/winegrowers/issues?q=label%3A%22%E3%81%B5%E3%82%8B%E3%81%84%3A%E8%A9%A6%E8%A1%8C%E4%B8%AD%22)
+
 - **状態**：試行中 → 定着 か 取り下げ
 - **見直し**：入れてから1か月が目安。分からなければ1か月延ばし、2回延ばしたら取り下げる
 
@@ -17,3 +19,4 @@
 | 2026-11-25 | Discord の通話を `/record` で録り、文字起こし・議事録・〔提案〕まで自動で出す | ひろしさんの依頼 | ground `tools/discord-meeting` | 2026-12-25 | 試行中 |
 | 2026-11-25 | Discord での AI とのやり取りをコマンドにそろえる（/ai・/propose・/record・/help・「コモンズに提案」） | ひろしさんの依頼 | ground `tools/discord-ai-member` | 2026-12-25 | 試行中 |
 | 2026-11-25 | 提案の置き場を Discord の `#提案` に1本化（書けば提案、/propose・「コモンズに提案」も `#提案` に載る） | ひろしさん（Discord で） | ground `tools/discord-ai-member` | 2026-12-25 | 試行中 |
+| 2026-11-25 | 提案を篩（ふるい）にかけてから入れる：提案箱（Issue）、重なりのまとめ、一般化、影響（小・中・大）での振り分け、👍・👎 での見直し（core の sieve、`tools/sieve`） | ひろしさんの依頼 | ground `plugins/core/skills/sieve`・`tools/sieve`・`docs/sieve.md` | 2026-12-25 | 試行中 |

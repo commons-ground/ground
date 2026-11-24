@@ -1,0 +1,98 @@
+# 篩（ふるい）：コモンズに入ってくる提案を集め、重なりをまとめ、一般化し、影響の大きさで振り分けて入れる。
+# 各コモンズのリポジトリから呼び出して使う。仕組みは tools/sieve/README.md、ルールは plugins/core/skills/sieve。
+#
+# 3段に分かれている。Claude が動くのは2段目だけで、集めるものが無ければ動かない（費用がかからない）。
+#   1. 集める   collect.py … Discord の〔提案〕〔覚えておく〕、提案箱の新しい Issue、見直しの時期の試行
+#   2. 振り分ける sieve.py … Claude（シェル・鍵なし）が core:sieve で決め、直すファイルを写しの中で直す
+#   3. 書き出す  apply.py  … 機械の点検を通ったものだけ、Issue・プルリクエスト・Discord に書く
+# 公開リポジトリで動くので、提案の中身はログに出さない。実行ページには件数と費用だけを残す。
+name: sieve
+
+on:
+  workflow_call:
+    inputs:
+      payload:
+        description: 起こした側から渡された JSON（Discord の channel_id など。無くてよい）
+        type: string
+        default: "{}"
+      member_dir:
+        description: 呼び出し側のリポジトリの中の設定フォルダ（config.json）
+        type: string
+        default: discord
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+      DISCORD_BOT_TOKEN:
+        required: false
+      SIEVE_APP_ID:
+        description: （任意）篩用の GitHub App。あれば、篩のプルリクエストでふつうに validate と自動マージが動く
+        required: false
+      SIEVE_APP_PRIVATE_KEY:
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  sieve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MEMBER_DIR: ${{ github.workspace }}/self/${{ inputs.member_dir }}
+      SELF_DIR: ${{ github.workspace }}/self
+      GROUND_DIR: ${{ github.workspace }}/ground
+      GH_REPO: ${{ github.repository }}
+      HAS_APP: ${{ secrets.SIEVE_APP_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: commons-ground/ground
+          path: ground
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q requests
+
+      - name: 集める
+        id: collect
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: python ground/tools/sieve/collect.py
+
+      - uses: actions/setup-node@v4
+        if: steps.collect.outputs.count != '0'
+        with:
+          node-version: "22"
+      - name: 振り分ける（Claude）
+        if: steps.collect.outputs.count != '0'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PLUGIN_ROOTS: ${{ github.workspace }}/self:${{ github.workspace }}/ground
+        run: |
+          pip install -q claude-agent-sdk
+          python ground/tools/sieve/sieve.py
+
+      - name: 篩用の GitHub App の鍵を出す（あるときだけ）
+        id: app
+        if: steps.collect.outputs.count != '0' && env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SIEVE_APP_ID }}
+          private-key: ${{ secrets.SIEVE_APP_PRIVATE_KEY }}
+
+      - name: 書き出す
+        if: steps.collect.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: python ground/tools/sieve/apply.py
