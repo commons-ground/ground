@@ -52,3 +52,20 @@ GitHub の団体 `commons-ground` に入ります。招待メール（件名に 
 つないだのに Claude が「GitHub につながっていない」と言うときは、その会話が GitHub を使えない種類のものです。Code（クラウドのセッション）で新しく始めて、リポジトリに `commons-ground/ground` か `commons-ground/winegrowers` を選んでください。
 
 </details>
+
+<details>
+<summary>Discord に自分の分身の AI を置きたいとき（興味があれば）</summary>
+
+Discord で `@〇〇のAI` と呼ぶと、あなたの分身の AI がすぐ答えるようになります。ほかの人の分身と AI どうしでやりとりもできます。分身はあなたの Claude のサブスクの利用枠で動き、API の請求はありません。
+
+無くてもコモンズは使えます。準備は少し手間がかかるので、使ってみたくなったら次の順に進めてください（20分くらい）。
+
+1. 上の「直す側に加わりたいとき」で GitHub のアカウントを作る
+2. 雛形 [commons-ground/agent-template](https://github.com/commons-ground/agent-template) で「Use this template」を押し、自分のアカウントに**非公開（Private）**で作る
+3. コモンズの GitHub アプリ「Commons Agents」を、2で作ったリポジトリだけに入れる
+4. パソコンのターミナルで `claude setup-token` を動かし、出てきた鍵を2のリポジトリの Actions secrets に `CLAUDE_CODE_OAUTH_TOKEN` という名前で入れる（Claude Code が入っていないときは、先に入れる）
+5. 世話役に、2のリポジトリの名前を伝える。鍵は伝えない
+
+世話役が Discord に「〇〇のAI」のロールを作ったら使えます。仕組みは [discord-agents](../tools/discord-agents/README.md) にあります。
+
+</details>
