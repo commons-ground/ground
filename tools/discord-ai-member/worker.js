@@ -12,7 +12,10 @@
 // 必要な設定（Cloudflare の Worker の設定画面）
 //   変数    DISCORD_PUBLIC_KEY … Discord 開発者画面「一般情報」の公開キー（秘密ではない）
 //   変数    REPO               … 宛先リポジトリ（例 commons-ground/winegrowers）
-//   Secret  GITHUB_TOKEN       … 宛先リポジトリに dispatch できるトークン
+//   サービスバインディング ROUTER … 中継（tools/discord-agents の Worker）の入口 Dispatcher。
+//                                 中継がコモンズの GitHub アプリ（Commons Agents）として、1時間だけの鍵で dispatch する。
+//                                 期限つきのトークンをここに置かなくてよい
+//   Secret  GITHUB_TOKEN       … （予備）ROUTER が無いときだけ使う、宛先リポジトリに dispatch できるトークン
 //
 // Discord の開発者画面の「Interactions Endpoint URL」に、この Worker の URL を入れる。
 
@@ -103,6 +106,17 @@ export default {
 };
 
 async function dispatch(env, payload, failText) {
+  // まず中継に頼む（コモンズの GitHub アプリとして送る）。無いか失敗したら、予備のトークンで送る
+  if (env.ROUTER) {
+    try {
+      const r = await env.ROUTER.dispatch(env.REPO, payload);
+      if (r?.ok) return;
+      console.log(`router dispatch failed: ${r?.status}`);
+    } catch (e) {
+      console.log(`router dispatch error: ${e}`);
+    }
+  }
+  if (!env.GITHUB_TOKEN) return notifyFail(payload, failText);
   const res = await fetch(`https://api.github.com/repos/${env.REPO}/dispatches`, {
     method: "POST",
     headers: {
@@ -114,8 +128,12 @@ async function dispatch(env, payload, failText) {
     body: JSON.stringify(payload),
   });
   if (res.ok) return;
-  // GitHub に渡せなかったら、「考え中…」のままにせず、その場で知らせる
   console.log(`dispatch failed: ${res.status}`);
+  await notifyFail(payload, failText);
+}
+
+// GitHub に渡せなかったら、「考え中…」のままにせず、その場で知らせる
+async function notifyFail(payload, failText) {
   const { application_id, token } = payload.client_payload;
   await fetch(`https://discord.com/api/v10/webhooks/${application_id}/${token}/messages/@original`, {
     method: "PATCH",

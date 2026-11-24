@@ -37,6 +37,8 @@
 //   - AI どうしの往復は MAX_HOPS 回まで。自分のロールに自分で答えることはしない
 //   - 1つの分身が1時間に動くのは MAX_PER_HOUR 回まで
 
+import { WorkerEntrypoint } from "cloudflare:workers";
+
 const API = "https://discord.com/api/v10";
 const MAX_HOPS = 3;
 const MAX_PER_HOUR = 20;
@@ -51,6 +53,29 @@ export default {
     return new Response("discord-agents");
   },
 };
+
+// ほかの Worker（Discord のコマンドの受け口 tools/discord-ai-member/worker.js）から、
+// サービスバインディングで呼ぶ入口。外の URL からは呼べない。
+// 受け口が期限つきのトークン（PAT）を持たずに、コモンズの GitHub アプリとして dispatch できるようにする。
+// 送れるのは commons-ground の中のリポジトリだけ。
+export class Dispatcher extends WorkerEntrypoint {
+  async dispatch(repo, payload) {
+    if (!/^commons-ground\/[A-Za-z0-9._-]+$/.test(String(repo))) return { ok: false, status: 400 };
+    const token = await installationToken(this.env, repo);
+    const res = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "discord-agents",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    console.log(`dispatch via binding ${payload?.event_type}: ${res.status}`);
+    return { ok: res.ok, status: res.status };
+  }
+}
 
 const json = (s, fallback) => {
   try {
