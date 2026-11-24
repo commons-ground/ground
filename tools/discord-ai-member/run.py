@@ -9,7 +9,7 @@ Claude Agent SDK（コモンズのプラグイン入り）で答えて、「考�
 環境変数
   PAYLOAD            … 受け口から渡された JSON（question, application_id, token, channel_id, user_name など）
   ANTHROPIC_API_KEY  … Claude の API キー（キーの持ち主に請求される）
-  MEMBER_DIR         … このコモンズの設定フォルダ（config.json と member.md）
+  MEMBER_DIR         … このコモンズの設定フォルダ（config.json・member.md・memory.md）
   PLUGIN_ROOTS       … プラグインを読む場所。plugins/ を持つフォルダを「:」区切りで。先のものが優先
   DISCORD_BOT_TOKEN  … （任意）あれば、チャンネルの直近のやりとりを読んで文脈にする
   WORK_DIR           … 作業場所（既定は RUNNER_TEMP）
@@ -110,7 +110,7 @@ def plugin_dirs(roots: list[Path], exclude: list[str]) -> tuple[list[dict], dict
     return dirs, origins
 
 
-def build_system_prompt(member_md: str, user_name: str) -> str:
+def build_system_prompt(member_md: str, user_name: str, memory_md: str = "") -> str:
     person = f"\n\n## いま話しかけている人\n名前：{user_name}\n" if user_name else ""
     rules = """
 
@@ -120,8 +120,10 @@ def build_system_prompt(member_md: str, user_name: str) -> str:
 - 3行を超える返事は、書く前に core:writing-for-humans を読んで従う
 - 分からないことは推測で埋めない。調べて分からなければ、そう書く
 - ここは複数の事業者が集まる場所。ほかの事業者の事業データ（人名、金額、口座、住所、取引先）は書かない
-- 最後の出力が、そのまま返事として投稿される"""
-    return member_md + person + rules
+- 最後の出力が、そのまま返事として投稿される
+- 次の自分（GitHub の自分も含む）が知っておくべきこと（人に直されたこと、コモンズで決まったこと、次から気をつけること）が出たら、返事の最後に「〔覚えておく〕（1行）」と書く。その場かぎりの話、事業データ、推測は書かない。core:harvest で拾われて、覚えていることに入る"""
+    memory = f"\n\n{memory_md}" if memory_md.strip() else ""
+    return member_md + memory + person + rules
 
 
 async def run_agent(prompt: str, system_prompt: str, config: dict, plugins: list[dict], work: Path) -> tuple[str, dict]:
@@ -201,6 +203,9 @@ def main() -> int:
     member_dir = Path(os.environ["MEMBER_DIR"])
     config = json.loads((member_dir / "config.json").read_text())
     member_md = (member_dir / "member.md").read_text()
+    # 覚えていること（GitHub の AI と共通。やりとりから育つ）
+    memory_path = member_dir / "memory.md"
+    memory_md = memory_path.read_text() if memory_path.exists() else ""
     work = Path(os.environ.get("WORK_DIR") or os.environ.get("RUNNER_TEMP") or "/tmp") / "discord-ai"
     work.mkdir(parents=True, exist_ok=True)
 
@@ -218,7 +223,7 @@ def main() -> int:
         + (f"参考：このチャンネルの直近のやりとり（古い順）\n---\n{history}\n---\n\n" if history else "")
         + f"質問：{question}"
     )
-    system_prompt = build_system_prompt(member_md, p.get("user_name", ""))
+    system_prompt = build_system_prompt(member_md, p.get("user_name", ""), memory_md)
 
     answer, info = asyncio.run(run_agent(prompt, system_prompt, config, plugins, work))
     write_summary(info, config, origins)

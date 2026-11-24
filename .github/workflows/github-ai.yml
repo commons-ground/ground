@@ -1,0 +1,30 @@
+# このリポジトリの Issue・プルリクエストで @claude と書くと、コモンズの AI が答える。
+# 本体は github-ai-member.yml。いまは Discord「Winegrowers Commons」にいる AI と同じふるまい・覚えていることを使う。
+# 鍵は secrets の ANTHROPIC_API_KEY にだけ置く（組織の secret にしておけば、どのリポジトリからも使える）。
+name: github-ai
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+  actions: read
+
+jobs:
+  reply:
+    uses: ./.github/workflows/github-ai-member.yml
+    with:
+      member_repo: commons-ground/winegrowers
+      member_dir: discord
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

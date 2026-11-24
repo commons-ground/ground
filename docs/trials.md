@@ -13,3 +13,4 @@
 | 2026-11-24 | GitHub につないでいない人の提案を Discord の「〔提案〕」で受ける | 旭さんとの打ち合わせ | ground `plugins/core/skills/propose-change`・`commons-chat` | 2026-12-24 | 試行中 |
 | 2026-11-24 | はじめかたに「Discord に入り、入口を Discord でログインしてつなぐ」を足す | 旭さんとの打ち合わせ | ground `docs/getting-started.md`・`docs/index.html` | 2026-12-24 | 試行中 |
 | 2026-11-24 | 知識コモンズの入口に「Discord でログイン」（参加者コードを配らなくてよい） | 旭さんとの打ち合わせ | winegrowers `servers/commons-mcp` | 2026-12-24 | 試行中 |
+| 2026-11-25 | GitHub の `@claude` に、Discord の AI と同じふるまい・覚えていることで答える。やりとりの「〔覚えておく〕」を harvest で `memory.md` に戻す | ひろしさん | ground `tools/ai-member`・`.github/workflows/github-ai*.yml` | 2026-12-25 | 試行中 |

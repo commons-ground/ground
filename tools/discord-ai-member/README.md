@@ -1,6 +1,6 @@
 # discord-ai-member
 
-コモンズの Discord に AI を置く仕組みです。Discord で `/ai 〇〇` と打つと、そのコモンズのスキル（土台の ground と、そのコモンズのプラグイン）を読んだ Claude が、同じチャンネルに答えます。
+コモンズの Discord に AI を置く仕組みです。GitHub の `@claude` と同じ AI です（`tools/ai-member/README.md`）。Discord で `/ai 〇〇` と打つと、そのコモンズのスキル（土台の ground と、そのコモンズのプラグイン）を読んだ Claude が、同じチャンネルに答えます。
 
 ## 流れ
 
@@ -27,6 +27,7 @@ Discord で /ai 〇〇
 | コマンドの登録 | `register.py`（最初に1回） |
 | 呼び名・モデル・上限額 | 呼び出し側の `discord/config.json` |
 | ふるまい（性格・決まり） | 呼び出し側の `discord/member.md` |
+| 覚えていること | 呼び出し側の `discord/memory.md`（GitHub の AI と共通。`tools/ai-member/README.md`） |
 
 ## 鍵（リポジトリには置かない）
 
