@@ -110,6 +110,8 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Discord の中継（GitHub アプリ Commons Agents）が送る repository_dispatch を通す。discord-agent.yml と同じ
+          allowed_bots: commons-agents
           claude_args: ${{ steps.prep.outputs.args }}
           plugin_marketplaces: ${{ steps.prep.outputs.marketplaces }}
           plugins: ${{ steps.prep.outputs.plugins }}
