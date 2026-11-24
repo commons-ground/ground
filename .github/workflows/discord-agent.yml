@@ -96,6 +96,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # GitHub の操作はしないので、Claude の GitHub アプリを入れなくても動くよう、この実行のトークンを渡す
           github_token: ${{ github.token }}
+          # 依頼はコモンズの GitHub アプリ（Commons Agents）が届けるので、その起動を受け付ける
+          allowed_bots: commons-agents
           claude_args: ${{ steps.prep.outputs.args }}
           prompt: |
             ${{ runner.temp }}/request.md に、コモンズの Discord からの依頼が書いてあります。
