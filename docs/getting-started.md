@@ -34,4 +34,13 @@ Claude を契約していない人は、この手順は要りません。家庭�
 
 GitHub の団体 `commons-ground` に入ります。招待メール（件名に `commons-ground` が入ったもの）を開き、GitHub のアカウントが無ければメールのボタンから作って、「Join commons-ground」を押します。入らなくても、気づいたことは Claude に言えば足ります。
 
+直す側に加わるには、2つの準備が要ります。どちらも1回だけです。
+
+1. **GitHub の団体 `commons-ground` に入る**（上の招待メールから）。招待は、団体のオーナーに GitHub のユーザー名かメールアドレスを伝えて送ってもらいます
+2. **Claude に GitHub をつなぐ**：[claude.ai/code](https://claude.ai/code) を開き、「GitHub でサインイン（Sign in with GitHub）」を押して、GitHub の画面で許可します。Claude の GitHub アプリは団体に入れてあるので、自分で入れる必要はありません
+
+これで、Claude に「このスキルをコモンズに提案して」と言えば、Claude がブランチを作ってプルリクエストを出すところまで進めます。出す先は、業種を問わないものは `commons-ground/ground`、ワイン生産者に固有のものは `commons-ground/winegrowers` です。
+
+つないだのに Claude が「GitHub につながっていない」と言うときは、その会話が GitHub を使えない種類のものです。Code（クラウドのセッション）で新しく始めて、リポジトリに `commons-ground/ground` か `commons-ground/winegrowers` を選んでください。
+
 </details>
