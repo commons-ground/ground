@@ -1,7 +1,9 @@
 # 篩（ふるい）の仕事の本体。各コモンズのリポジトリから呼び出して使う。
-# 提案の出来事（Discord の /propose・「コモンズに提案」、提案の Issue、カードへのコメント）が1つ起きるたびに1回だけ動き、
+# 提案の出来事（Discord の /propose・「コモンズに提案」、#提案 に直接書いた発言、提案の Issue、カードへのコメント）が1つ起きるたびに1回だけ動き、
 # core:sieve の手順で、まとめる → 一般化する → 影響で振り分ける → 入れる・取り下げる、を1件ぶん進める。
-# 定期実行は使わない。見直しの日が過ぎた試行は、この仕事が動くたびについでに見る。
+# 定期実行は足さない。#提案 に直接書いた発言は、すでに毎分 Discord を見ている中継（tools/discord-agents）が見つけて sieve-intake で起こす。
+# 見直しの日が過ぎた試行は、この仕事が動くたびについでに見る。
+# 篩の係（Claude）の書き込みは、すべて tools/sieve/safe.py の門を通る（個人や事業の情報・鍵の値を機械で点検してから書く）。
 # 仕組みは tools/sieve/README.md、設計は docs/sieve.md。
 name: sieve
 
@@ -71,7 +73,8 @@ jobs:
           # 出来事を、篩に要る項目だけにして渡す（合鍵は渡さない）
           case "$EVENT_NAME" in
             repository_dispatch)
-              jq '{kind: "discord-propose", text: .client_payload.text, proposer: .client_payload.user_name, author: (.client_payload.source_author // .client_payload.user_name), link: (.client_payload.source_link // "")}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
+              # sieve-intake は中継が #提案 の発言を見つけたとき、discord-propose は /propose・「コモンズに提案」
+              jq '{kind: (if .action == "sieve-intake" then "discord-message" else "discord-propose" end), text: .client_payload.text, proposer: .client_payload.user_name, author: (.client_payload.source_author // .client_payload.user_name), link: (.client_payload.source_link // ""), channel_id: (.client_payload.channel_id // ""), message_id: (.client_payload.message_id // "")}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
             issues)
               jq '{kind: "issue-opened", number: .issue.number, url: .issue.html_url, title: .issue.title, body: .issue.body, proposer: .issue.user.login}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
             issue_comment)
@@ -92,7 +95,11 @@ jobs:
             PL="$PL$(jq -r --arg m "$name" '.plugins[].name + "@" + $m' "$f")"$'\n'
           done
           {
-            echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $G/tools/sieve/agent.md --allowedTools Bash(gh:*),Bash(git:*),Bash(python3:*),Read,Write,Edit,Glob,Grep,WebSearch"
+            # gh と git は、読むことと手元の操作だけ。公開の場所に書くのは safe.py の門だけ（点検してから書く）。
+            # 外に文を出せる道（WebSearch など）は渡さない
+            GHR="Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh search:*),Bash(gh label list:*)"
+            GIT="Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git fetch:*),Bash(git checkout:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git rev-parse:*),Bash(git branch:*)"
+            echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $G/tools/sieve/agent.md --allowedTools $GHR,$GIT,Bash(python3 $G/tools/sieve/safe.py:*),Read,Write,Edit,Glob,Grep"
             echo "marketplaces<<EOF"; printf '%s' "$MK"; echo "EOF"
             echo "plugins<<EOF"; printf '%s' "$PL"; echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -109,6 +116,19 @@ jobs:
           prompt: |
             篩の仕事です。.sieve/event.json の出来事を、core:sieve の手順で1件ぶん進めてください。
             手順と決まりは、システムプロンプトの「篩の仕事」にあります。
+
+      - name: '#提案 に直接書いた発言なら、その発言に篩のカードを返す'
+        if: always() && github.event_name == 'repository_dispatch' && github.event.action == 'sieve-intake'
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CH: ${{ github.event.client_payload.channel_id }}
+          MSG: ${{ github.event.client_payload.message_id }}
+        run: |
+          [ -f .sieve/result.json ] || { echo "結果が無い"; exit 0; }
+          # 提案でない発言（あいさつや質問）には返事をしない
+          [ -n "$(jq -r '.card_url // ""' .sieve/result.json)" ] || { echo "カードなし"; exit 0; }
+          TEXT=$(jq -r '"🧺 篩で受け付けました（" + (.tier // "?") + "）：" + (.summary // "") + "\n" + (.card_url // "")' .sieve/result.json)
+          python3 "$SIEVE_TOOLS/safe.py" reply "$CH" "$MSG" "$TEXT" || true
 
       - name: 受け口から来た提案なら、出した本人にだけ見える1行で、篩のカードを返す
         if: always() && github.event_name == 'repository_dispatch' && github.event.client_payload.token != ''
