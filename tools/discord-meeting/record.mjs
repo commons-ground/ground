@@ -1,7 +1,7 @@
 // コモンズの通話を録る（discord-meeting の1段目）。
 //
 // /record start を打った人がいるボイスチャンネルに、ボットが入って録る。
-// 話している人ごと・話のかたまりごとに、Opus のまま .ogg に書き出す（あとで transcribe.py が文字にする）。
+// 話している人ごと・話のかたまりごとに、生の音（48kHz・2ch・16bit の .pcm）に書き出す（あとで transcribe.py が文字にする）。
 // 次のどれかで止まる：
 //   - 人間が全員抜けて、EMPTY_GRACE_SEC 秒たった
 //   - /record stop（受け口が「⏹ 録音を止めます」と書く。ボット自身のその書き込みを合図にする）
@@ -105,24 +105,27 @@ client.once(Events.ClientReady, async () => {
   const pending = [];
   let count = 0;
 
-  // 話し始めたら、その人の音を、黙るまでの1かたまりとして書き出す
+  // 話し始めたら、その人の音を、黙るまでの1かたまりとして書き出す（48kHz・2ch・16bit の生の音）
   connection.receiver.speaking.on("start", (userId) => {
     if (writing.has(userId) || stopReason) return;
-    writing.add(userId);
-    const offset = Date.now() - startedAt;
-    const file = join(outDir, "segments", `${String(offset).padStart(9, "0")}_${userId}.ogg`);
-    const opus = connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
-    const ogg = new prism.opus.OggLogicalBitstream({
-      opusHead: new prism.opus.OpusHead({ channelCount: 2, sampleRate: 48000 }),
-      pageSizeControl: { maxPackets: 10 },
-    });
-    nameOf(userId);
-    count++;
-    pending.push(
-      pipeline(opus, ogg, createWriteStream(file))
-        .catch(() => {})
-        .finally(() => writing.delete(userId)),
-    );
+    try {
+      writing.add(userId);
+      const offset = Date.now() - startedAt;
+      const file = join(outDir, "segments", `${String(offset).padStart(9, "0")}_${userId}.pcm`);
+      const opus = connection.receiver.subscribe(userId, { end: { behavior: EndBehaviorType.AfterSilence, duration: 1200 } });
+      const decoder = new prism.opus.Decoder({ rate: 48000, channels: 2, frameSize: 960 });
+      nameOf(userId);
+      count++;
+      pending.push(
+        pipeline(opus, decoder, createWriteStream(file))
+          .catch((e) => console.log(`かたまりを書けなかった: ${e?.name || e}`))
+          .finally(() => writing.delete(userId)),
+      );
+    } catch (e) {
+      // 1つのかたまりで失敗しても、録音全体は止めない
+      writing.delete(userId);
+      console.log(`かたまりを始められなかった: ${e?.name || e}`);
+    }
   });
 
   // 人間が誰もいなくなったら、少し待って止める
