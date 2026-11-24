@@ -7,6 +7,7 @@
 | 出来事 | 起こすもの |
 | --- | --- |
 | Discord の `/propose`・「コモンズに提案」 | 受け口（`tools/discord-ai-member/worker.js`）が送る repository_dispatch `discord-propose` を、`#提案` に載せる仕事（`discord-propose.yml`）と篩が両方受け取る |
+| `#提案` に直接書いた発言、通話の議事録から出た〔提案〕 | 中継（`tools/discord-agents/router.js`）が毎分の見回りのついでに見つけ、repository_dispatch `sieve-intake` を送る |
 | 提案の Issue を作る（様式「提案（篩にかける）」、またはタイトルが「〔提案〕」） | GitHub の `issues: opened` |
 | カード（ラベル「篩」の Issue）にコメントが付く | GitHub の `issue_comment: created` |
 
@@ -20,7 +21,7 @@
 | ground 自身の呼び出し | `.github/workflows/sieve-here.yml` |
 | 篩の係への指示 | `tools/sieve/agent.md` |
 | 篩の手順 | `plugins/core/skills/sieve/SKILL.md` |
-| Discord に知らせる | `tools/sieve/discord_post.py`（呼び出し側の `config.json` の `sieve_channel`、無ければ `#スキルの相談`） |
+| 書き込みの門（点検してから書く。Discord への知らせ・返事、見直しの声を数える） | `tools/sieve/safe.py`（知らせは呼び出し側の `config.json` の `sieve_channel`、無ければ `#スキルの相談`） |
 | 提案の様式 | `.github/ISSUE_TEMPLATE/proposal.yml` |
 
 ## 呼び出し側の workflow（各コモンズのリポジトリ）
@@ -28,7 +29,7 @@
 ```yaml
 on:
   repository_dispatch:
-    types: [discord-propose]
+    types: [discord-propose, sieve-intake]
   issues:
     types: [opened]
   issue_comment:
@@ -61,4 +62,18 @@ jobs:
 ## まだ無いもの
 
 - 別のリポジトリへの書き込み。いまの鍵は呼び出し側のリポジトリにしか書けないので、行き先が ground のカードにはラベル `行き先:ground` を付け、人の Claude が harvest で運ぶ
-- `#提案` に直接書いた発言、通話の〔提案〕（`tools/discord-meeting`）、AI の返事の〔覚えておく〕を、自動で篩に渡す道。いまは Discord に出たものを harvest で拾う
+- AI の返事の〔覚えておく〕を、自動で篩に渡す道。いまは harvest で拾う
+
+## 中継に篩の入り口を受け持たせる（世話役が1回）
+
+1. GitHub アプリ「Commons Agents」を、コモンズのリポジトリ（例：`commons-ground/winegrowers`）にも入れる（repository_dispatch を送るため）
+2. 中継の Worker の変数 `SIEVE` に `{"channel": "提案", "repo": "commons-ground/winegrowers"}` を足し、`DISCORD_CHANNELS` に `提案` が入っているかを確かめる
+3. 中継を置き直す（`router.js`）
+
+## 篩の係にできること・できないこと
+
+| できる | できない |
+| --- | --- |
+| gh で読む（issue・pr の一覧と中身、検索）、git の手元の操作（ブランチ、commit） | gh の書き込みと git push を直接すること（門 `safe.py` を通す） |
+| 門を通して、カード・コメント・ラベル・プルリクエストを作る、Discord に書く | 個人や事業の情報らしき文字・鍵の値を含む文を書くこと（門が止める） |
+| 門を通して、ラベル「人の確認」を付ける | ラベル「人の確認」を外すこと、main への push、Web 検索 |

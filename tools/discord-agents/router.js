@@ -7,6 +7,10 @@
 //
 // Discord はふつうの発言を外に知らせないので、1分おきに（Cloudflare の Cron トリガー）見に行く。
 //
+// ついでに、篩（tools/sieve）の入り口も受け持つ。提案のチャンネル（#提案）に人が直接書いた発言と、
+// 通話の議事録から出た〔提案〕を見つけたら、コモンズのリポジトリに repository_dispatch（sieve-intake）で知らせる。
+// 新しい定期実行を足さずに、すでにある見回りに相乗りするため。
+//
 // 設定（Worker の設定画面。リポジトリには ID や鍵を書かない）
 //   変数    DISCORD_GUILD_ID     コモンズの Discord サーバーのID
 //   変数    DISCORD_CHANNELS     見るチャンネル名のカンマ区切り（その中のスレッドも見る）
@@ -20,6 +24,9 @@
 // 中継はアプリとしてそのリポジトリに dispatch し、返事は GitHub Actions の身分証明（OIDC）で
 // 「そのリポジトリの、ground の discord-agent.yml から来たか」を確かめてから投稿する。
 //   KV      STATE                どこまで見たか、発言ごとの往復回数
+//   変数    SIEVE                （任意）JSON {"channel": "提案", "repo": "commons-ground/winegrowers"}。
+//                                あれば篩の入り口を受け持つ。そのリポジトリにも Commons Agents アプリを入れておく。
+//                                channel は DISCORD_CHANNELS にも入れておく
 //
 // 守ること
 //   - 分身の返事は「🤖 ひろしのAI」と名乗って投稿する。@ で呼べるのは AI 用ロールと、その分身の持ち主だけ
@@ -73,7 +80,8 @@ async function watchedChannels(env) {
 async function poll(env) {
   const agents = json(env.AGENTS, {});
   const roleIds = Object.keys(agents);
-  if (!roleIds.length) return;
+  const sieve = json(env.SIEVE, null);
+  if (!roleIds.length && !sieve?.repo) return;
   for (const ch of await watchedChannels(env)) {
     const key = `last:${ch.id}`;
     const last = await env.STATE.get(key);
@@ -86,6 +94,9 @@ async function poll(env) {
     if (!msgs.length) continue;
     msgs.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
     for (const m of msgs) {
+      if (sieve?.repo && ch.name === sieve.channel && isProposal(m)) {
+        await dispatchSieve(env, sieve, ch, m);
+      }
       const hop = Number((await env.STATE.get(`hop:${m.id}`)) || 0);
       const from = await env.STATE.get(`by:${m.id}`); // 分身の返事なら、その分身のロールID
       for (const roleId of m.mention_roles || []) {
@@ -98,6 +109,42 @@ async function poll(env) {
     }
     await env.STATE.put(key, msgs[msgs.length - 1].id);
   }
+}
+
+// 篩に渡す発言か。人のふつうの発言はすべて提案。ボットの発言は、通話の議事録から出た〔提案〕だけ
+// （/propose と「コモンズに提案」でボットが書いたものは、受け口から別に篩が起きているので渡さない）
+function isProposal(m) {
+  if (![0, 19].includes(m.type) || !(m.content || "").trim()) return false;
+  if (!m.author?.bot) return true;
+  return (m.content || "").startsWith("〔提案〕") && (m.content || "").includes("拾った候補");
+}
+
+async function dispatchSieve(env, sieve, ch, m) {
+  const token = await installationToken(env, sieve.repo).catch((e) => {
+    console.log(`token sieve: ${e.message}`);
+    return null;
+  });
+  if (!token) return;
+  const res = await fetch(`https://api.github.com/repos/${sieve.repo}/dispatches`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "discord-agents",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      event_type: "sieve-intake",
+      client_payload: {
+        text: (m.content || "").slice(0, 4000),
+        user_name: m.member?.nick || m.author?.global_name || m.author?.username || "",
+        source_link: `https://discord.com/channels/${env.DISCORD_GUILD_ID}/${ch.id}/${m.id}`,
+        channel_id: ch.id,
+        message_id: m.id,
+      },
+    }),
+  });
+  console.log(`dispatch sieve: ${res.status}`);
 }
 
 async function underLimit(env, roleId) {

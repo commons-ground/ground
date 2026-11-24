@@ -8,15 +8,22 @@
 | kind | 起きたこと | すること |
 | --- | --- | --- |
 | `discord-propose` | Discord で `/propose` か「コモンズに提案」が使われた | sieve の2〜5。カードを作るか、既にあるカードに声を足す |
+| `discord-message` | `#提案` に直接書かれた発言を、中継が見つけた（`/record` の議事録から出た〔提案〕も含む） | 同じく sieve の2〜5。ただし、提案でない発言（あいさつ、ほかの提案への返事や質問）なら、カードを作らず `tier` を「保留」にして、`summary` に理由を1行書く |
 | `issue-opened` | 提案の Issue が作られた | その Issue をカードとして整える（3の一般化で本文を書き直し、ラベル `篩` を付ける）。そのあと2〜5 |
 | `issue-comment` | カードにコメントが付いた | 「取り下げ」や反対の声なら sieve の6、声の追加なら2、質問なら答える |
 
-どの出来事でも、最後に「見直しの日が過ぎた試行中のカード」を1件まで見て、sieve の6に従う。
+どの出来事でも、最後に「見直しの日が過ぎた試行中のカード」と「見直しの声を聞き始めて7日たったカード」を合わせて1件まで見て、sieve の6に従う。
 
 ### 使える道具
-- `gh`：カードの検索・作成・コメント・ラベル、プルリクエストの作成。ラベルが無ければ `gh label create <名前> --force` で作る
-- `git`：ブランチを切って直す。main に直接入れない
-- Discord に知らせる：`python3 "$SIEVE_TOOLS/discord_post.py" "<文>"`（`#スキルの相談` に書く。中と大のときだけ。2行まで、カードのリンク付き）
+読むことと手元の操作は直接、公開の場所に書くことは門（`$SIEVE_TOOLS/safe.py`）を通してだけできる。門は書く前に、個人や事業の情報らしき文字（電話番号・メール・各自の Notion や Drive の URL・金額）と鍵の値を機械で点検し、見つかったら書かない。止められたら、一般化して書き直すか、カードを `篩:保留` にする。
+
+| したいこと | 使い方 |
+| --- | --- |
+| カードやプルリクエストを探す・読む | `gh issue list`・`gh issue view`・`gh pr list`・`gh pr view`・`gh search` |
+| カードを作る・直す・コメント・ラベル、プルリクエストを作る | `python3 "$SIEVE_TOOLS/safe.py" gh issue create --title "…" --body-file <ファイル> --label 篩` のように、`gh` の前に門を付ける。本文はファイルに書いて `--body-file` で渡す。ラベルが無ければ `safe.py gh label create <名前> --force` |
+| 直す | `git switch -c <ブランチ>` → 編集 → `git add`・`git commit` → `python3 "$SIEVE_TOOLS/safe.py" push <ブランチ>`。main に直接入れない |
+| Discord に知らせる | `python3 "$SIEVE_TOOLS/safe.py" discord "<文>"`（`#スキルの相談` に書く。中と大のときと、見直しの声かけだけ。2行まで、カードのリンク付き）。投稿のリンクが返る |
+| 見直しの声を数える | `python3 "$SIEVE_TOOLS/safe.py" reactions <Discord の発言のリンク>` で 👍・👎 の数が返る |
 
 ### 終わり方
 - 最後に `.sieve/result.json` に `{"card_url": "...", "tier": "小|中|大|差し戻す|知識|保留", "summary": "1行"}` を書く。受け口から来た出来事なら、この1行が、提案を出した本人にだけ Discord で返る
