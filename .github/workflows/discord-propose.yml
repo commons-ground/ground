@@ -1,0 +1,38 @@
+# Discord の /propose と、発言のアプリ「コモンズに提案」を、提案のチャンネルに載せる。各コモンズから呼び出して使う。
+# 中身はログに出さない。
+name: discord-propose
+
+on:
+  workflow_call:
+    inputs:
+      payload:
+        type: string
+        required: true
+      member_dir:
+        type: string
+        default: discord
+    secrets:
+      DISCORD_BOT_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+      - uses: actions/checkout@v4
+        with:
+          repository: commons-ground/ground
+          path: ground
+      - run: pip install -q requests
+      - env:
+          PAYLOAD: ${{ inputs.payload }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          MEMBER_DIR: ${{ github.workspace }}/self/${{ inputs.member_dir }}
+        run: python ground/tools/discord-ai-member/propose.py
