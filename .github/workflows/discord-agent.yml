@@ -28,8 +28,6 @@ on:
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: true
-      AGENT_REPLY_KEY:
-        required: true
 
 permissions:
   contents: read
@@ -107,11 +105,15 @@ jobs:
         if: always()
         env:
           PAYLOAD: ${{ inputs.payload }}
-          AGENT_REPLY_KEY: ${{ secrets.AGENT_REPLY_KEY }}
         run: |
           python3 - <<'PY'
           import json, os, pathlib, urllib.request
           p = json.loads(os.environ["PAYLOAD"])
+          # 中継に「このリポジトリの、この workflow から来た」ことを示す身分証明（OIDC）をもらう。合言葉は要らない
+          oidc_req = urllib.request.Request(os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=commons-discord-agents",
+              headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
+          with urllib.request.urlopen(oidc_req, timeout=30) as r:
+              oidc = json.load(r)["value"]
           f = pathlib.Path(os.environ["RUNNER_TEMP"]) / "reply.md"
           text = f.read_text().strip() if f.exists() else ""
           if not text:
@@ -119,7 +121,7 @@ jobs:
           body = json.dumps({"role_id": p["role_id"], "channel_id": p["channel_id"], "message_id": p["message_id"],
                              "hop": p.get("hop", 0), "text": text}).encode()
           req = urllib.request.Request(p["reply_url"], data=body, method="POST", headers={
-              "Content-Type": "application/json", "Authorization": "Bearer " + os.environ["AGENT_REPLY_KEY"]})
+              "Content-Type": "application/json", "Authorization": "Bearer " + oidc})
           with urllib.request.urlopen(req, timeout=30) as r:
               print("投稿:", r.status)
           PY

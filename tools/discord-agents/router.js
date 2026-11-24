@@ -12,8 +12,13 @@
 //   変数    DISCORD_CHANNELS     見るチャンネル名のカンマ区切り（その中のスレッドも見る）
 //   変数    AGENTS               JSON {"ロールID": {"name": "ひろしのAI", "owner": "持ち主のユーザーID", "repo": "owner/repo"}}
 //   Secret  DISCORD_BOT_TOKEN    ボット「コモンズのAI」の鍵
-//   Secret  AGENT_GITHUB_TOKENS  JSON {"ロールID": "その人のリポジトリに dispatch できるトークン"}
-//   Secret  AGENT_REPLY_KEYS     JSON {"ロールID": "その人の分身が /reply に使う合言葉"}
+//   変数    GITHUB_APP_ID        コモンズの GitHub アプリ（Commons Agents）の App ID
+//   Secret  GITHUB_APP_PRIVATE_KEY  そのアプリの秘密鍵（.pem の中身）
+//   変数    PUBLIC_URL           この中継自身の URL（分身が返事を返す先）
+//
+// 各自は、自分のリポジトリにコモンズの GitHub アプリを入れるだけでよい（トークンや合言葉を渡さない）。
+// 中継はアプリとしてそのリポジトリに dispatch し、返事は GitHub Actions の身分証明（OIDC）で
+// 「そのリポジトリの、ground の discord-agent.yml から来たか」を確かめてから投稿する。
 //   KV      STATE                どこまで見たか、発言ごとの往復回数
 //
 // 守ること
@@ -104,7 +109,10 @@ async function underLimit(env, roleId) {
 }
 
 async function dispatch(env, roleId, agent, ch, m, hop, agents) {
-  const token = json(env.AGENT_GITHUB_TOKENS, {})[roleId];
+  const token = await installationToken(env, agent.repo).catch((e) => {
+    console.log(`token ${agent.name}: ${e.message}`);
+    return null;
+  });
   if (!token) return;
   // 直前のやりとり（流れが分かるように）
   const recent = await discord(env, "GET", `/channels/${ch.id}/messages?before=${m.id}&limit=10`);
@@ -147,14 +155,26 @@ async function dispatch(env, roleId, agent, ch, m, hop, agents) {
 async function reply(request, env) {
   const body = await request.json().catch(() => null);
   if (!body?.role_id || !body?.channel_id || !body?.text) return new Response("bad request", { status: 400 });
-  const keys = json(env.AGENT_REPLY_KEYS, {});
-  const auth = (request.headers.get("Authorization") || "").replace(/^Bearer /, "");
-  if (!keys[body.role_id] || !(await same(auth, keys[body.role_id]))) return new Response("unauthorized", { status: 401 });
-  const agent = json(env.AGENTS, {})[body.role_id];
+  const agents = json(env.AGENTS, {});
+  const agent = agents[body.role_id];
+  if (!agent) return new Response("unknown agent", { status: 403 });
+  // 身分証明（GitHub Actions の OIDC）で、その分身のリポジトリの、決まった workflow から来たかを確かめる
+  const jwt = (request.headers.get("Authorization") || "").replace(/^Bearer /, "");
+  const claims = await verifyOidc(env, jwt).catch((e) => {
+    console.log(`oidc: ${e.message}`);
+    return null;
+  });
+  if (
+    !claims ||
+    String(claims.repository).toLowerCase() !== String(agent.repo).toLowerCase() ||
+    !String(claims.job_workflow_ref || "").startsWith(WORKFLOW_REF)
+  ) {
+    return new Response("unauthorized", { status: 401 });
+  }
   // 返事を投稿できるのは、見ているチャンネル（とそのスレッド）だけ
   const allowed = (await watchedChannels(env)).some((c) => c.id === body.channel_id);
-  if (!agent || !allowed) return new Response("not allowed", { status: 403 });
-  const agentRoles = Object.keys(json(env.AGENTS, {}));
+  if (!allowed) return new Response("not allowed", { status: 403 });
+  const agentRoles = Object.keys(agents);
   const text = `**🤖 ${agent.name}**\n${String(body.text)}`;
   let first;
   for (let i = 0; i < text.length; i += 1900) {
@@ -170,12 +190,89 @@ async function reply(request, env) {
   return Response.json({ ok: true, message_id: first.id });
 }
 
-async function same(a, b) {
-  const enc = new TextEncoder();
-  const [x, y] = await Promise.all([a, b].map((s) => crypto.subtle.digest("SHA-256", enc.encode(s))));
-  const u = new Uint8Array(x),
-    v = new Uint8Array(y);
-  let d = 0;
-  for (let i = 0; i < u.length; i++) d |= u[i] ^ v[i];
-  return d === 0;
+// ---- GitHub アプリとして動く（各自のリポジトリへの dispatch） ----
+
+const WORKFLOW_REF = "commons-ground/ground/.github/workflows/discord-agent.yml@";
+const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
+const OIDC_AUDIENCE = "commons-discord-agents";
+
+const b64url = (buf) =>
+  btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64urlJson = (o) => b64url(new TextEncoder().encode(JSON.stringify(o)));
+const fromB64url = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+
+// GitHub の秘密鍵（PKCS#1 の "BEGIN RSA PRIVATE KEY"）を、WebCrypto が読める PKCS#8 に包み直す
+function pemToPkcs8(pem) {
+  const der = Uint8Array.from(atob(pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "")), (c) => c.charCodeAt(0));
+  if (!pem.includes("BEGIN RSA PRIVATE KEY")) return der;
+  const len = (n) => (n < 0x80 ? [n] : n < 0x100 ? [0x81, n] : [0x82, n >> 8, n & 0xff]);
+  const algo = [0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00];
+  const octet = [0x04, ...len(der.length), ...der];
+  const inner = [0x02, 0x01, 0x00, ...algo, ...octet];
+  return new Uint8Array([0x30, ...len(inner.length), ...inner]);
+}
+
+async function appJwt(env) {
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pemToPkcs8(env.GITHUB_APP_PRIVATE_KEY),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const now = Math.floor(Date.now() / 1000);
+  const unsigned = `${b64urlJson({ alg: "RS256", typ: "JWT" })}.${b64urlJson({ iat: now - 60, exp: now + 540, iss: env.GITHUB_APP_ID })}`;
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
+  return `${unsigned}.${b64url(sig)}`;
+}
+
+async function gh(path, token, method = "GET", body) {
+  const res = await fetch(`https://api.github.com${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "discord-agents",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
+  return res.json();
+}
+
+// そのリポジトリ1つだけに効く、1時間のトークンをもらう（50分だけ取っておく）
+async function installationToken(env, repo) {
+  const cacheKey = `tok:${repo.toLowerCase()}`;
+  const cached = await env.STATE.get(cacheKey);
+  if (cached) return cached;
+  const jwt = await appJwt(env);
+  const inst = await gh(`/repos/${repo}/installation`, jwt);
+  const tok = await gh(`/app/installations/${inst.id}/access_tokens`, jwt, "POST", {
+    repositories: [repo.split("/")[1]],
+  });
+  await env.STATE.put(cacheKey, tok.token, { expirationTtl: 3000 });
+  return tok.token;
+}
+
+async function verifyOidc(env, jwt) {
+  const [h, p, s] = jwt.split(".");
+  if (!s) throw new Error("not a jwt");
+  const header = JSON.parse(new TextDecoder().decode(fromB64url(h)));
+  const claims = JSON.parse(new TextDecoder().decode(fromB64url(p)));
+  let jwks = await env.STATE.get("oidc:jwks", "json");
+  if (!jwks || !jwks.keys.some((k) => k.kid === header.kid)) {
+    jwks = await (await fetch(`${OIDC_ISSUER}/.well-known/jwks`)).json();
+    await env.STATE.put("oidc:jwks", JSON.stringify(jwks), { expirationTtl: 3600 });
+  }
+  const jwk = jwks.keys.find((k) => k.kid === header.kid);
+  if (!jwk) throw new Error("unknown kid");
+  const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+  const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, fromB64url(s), new TextEncoder().encode(`${h}.${p}`));
+  if (!ok) throw new Error("bad signature");
+  const now = Date.now() / 1000;
+  if (claims.iss !== OIDC_ISSUER || claims.aud !== OIDC_AUDIENCE || claims.exp < now || claims.nbf > now + 60) {
+    throw new Error("bad claims");
+  }
+  return claims;
 }

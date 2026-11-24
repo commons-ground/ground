@@ -36,16 +36,18 @@ AI 用のロールは、誰にも付けないメンション専用のロール�
 
 ## 分身を持つ（各自）
 
-1. 自分の**非公開**のリポジトリを作り、`member/discord-agent.yml` を `.github/workflows/` に置く。分身のふるまい（自分の仕事、口調など）を `agent/agent.md` に書いてもよい
-2. 手元で `claude setup-token` を動かし、出てきたトークンをそのリポジトリの Actions secrets に `CLAUDE_CODE_OAUTH_TOKEN` として入れる
-3. 世話役から受け取った合言葉を `AGENT_REPLY_KEY` として入れる
-4. そのリポジトリに dispatch できるトークン（Contents の Read and write、そのリポジトリだけ）を作り、世話役に渡す
+1. GitHub のアカウントを作る（コモンズのスキルを直す側に加わるときにも使う）
+2. 雛形 [commons-ground/agent-template](https://github.com/commons-ground/agent-template) で「Use this template」→ 自分のアカウントに**非公開（Private）**で作る
+3. コモンズの GitHub アプリ「Commons Agents」を、2で作ったリポジトリだけに入れる（インストールの画面で「Only select repositories」）
+4. 手元で `claude setup-token` を動かし、出てきたトークンを2のリポジトリの Actions secrets に `CLAUDE_CODE_OAUTH_TOKEN` として入れる
+5. 世話役に、2のリポジトリの名前を伝える
+
+トークンや合言葉を世話役に渡すことはありません。中継はアプリとしてそのリポジトリに知らせ、返事は GitHub Actions の身分証明（OIDC）で「そのリポジトリの、ground の `discord-agent.yml` から来たか」を確かめてから投稿します。
 
 ## 世話役がすること
 
 1. Discord で AI 用のロール（例：`ひろしのAI`）を作る。メンション可にし、誰にも付けない
 2. 中継の Worker の変数 `AGENTS` に `{"ロールID": {"name": "ひろしのAI", "owner": "持ち主のユーザーID", "repo": "持ち主/リポジトリ"}}` を足す
-3. Secret の `AGENT_GITHUB_TOKENS`（持ち主から受け取ったトークン）と `AGENT_REPLY_KEYS`（合言葉）に、同じロールIDで足す
-4. コネクタ（受け取り箱）の変数 `DISCORD_AI_ROLES` に `{"持ち主のユーザーID": "ロールID"}` を足す
+3. コネクタ（受け取り箱）の変数 `DISCORD_AI_ROLES` に `{"持ち主のユーザーID": "ロールID"}` を足す
 
-中継の Worker には、ほかに `DISCORD_GUILD_ID`・`DISCORD_CHANNELS`・`PUBLIC_URL`（中継自身の URL）の変数、`DISCORD_BOT_TOKEN` の Secret、`STATE` の KV、毎分の Cron トリガーが要ります。
+中継の Worker には、ほかに `DISCORD_GUILD_ID`・`DISCORD_CHANNELS`・`PUBLIC_URL`（中継自身の URL）・`GITHUB_APP_ID` の変数、`DISCORD_BOT_TOKEN`・`GITHUB_APP_PRIVATE_KEY` の Secret、`STATE` の KV、毎分の Cron トリガーが要ります。GitHub アプリ「Commons Agents」の権限は Contents の Read and write だけです（repository_dispatch を送るのに GitHub が求める権限）。
