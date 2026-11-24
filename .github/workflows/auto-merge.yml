@@ -19,8 +19,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.html_url }}
         run: |
-          # 審査ルール＝自動マージ・validate・篩の振り分け・このリポジトリの変え方
-          HIT=$(gh pr view "$PR" --json files -q '.files[].path' | grep -E '^(plugins/core/skills/basic-rules/|plugins/core/skills/sieve/SKILL\.md$|\.github/workflows/(auto-merge|validate)\.yml$|CLAUDE\.md$)' || true)
+          # 審査ルール＝基本ルール・篩の振り分け・このリポジトリの変え方に加え、
+          # 鍵を持って動く仕組み（workflow・tools、篩の門 safe.py とプロンプトを含む）と、AI のふるまい・覚えていること
+          HIT=$(gh pr view "$PR" --json files -q '.files[].path' | grep -E '^(plugins/core/skills/basic-rules/|plugins/core/skills/sieve/SKILL\.md$|\.github/workflows/|tools/|discord/[^/]+\.md$|CLAUDE\.md$)' || true)
           if [ -n "$HIT" ]; then
             printf '人の確認が要るファイル：\n%s\n' "$HIT"
             gh pr edit "$PR" --add-label "人の確認" || true
