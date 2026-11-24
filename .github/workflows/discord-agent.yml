@@ -125,7 +125,9 @@ jobs:
           body = json.dumps({"role_id": p["role_id"], "channel_id": p["channel_id"], "message_id": p["message_id"],
                              "hop": p.get("hop", 0), "text": text}).encode()
           req = urllib.request.Request(p["reply_url"], data=body, method="POST", headers={
-              "Content-Type": "application/json", "Authorization": "Bearer " + oidc})
+              "Content-Type": "application/json", "Authorization": "Bearer " + oidc,
+              # Python の既定の名乗り（Python-urllib）は Cloudflare に 403 で止められるので、名乗りを付ける
+              "User-Agent": "commons-discord-agent"})
           with urllib.request.urlopen(req, timeout=30) as r:
               print("投稿:", r.status)
           PY
