@@ -2,11 +2,11 @@
 //
 // Discord のコマンド（commands.json）を受ける。どのコマンドも、ここで3秒以内に一言返す。
 //   /ai        … 「考え中…」を返し、repository_dispatch（discord-interaction）でリポジトリの Claude に渡す
-//   /録音 開始 … 「準備しています」を返し、repository_dispatch（discord-record）で録音の仕事を起こす
-//   /録音 終了 … 「⏹ 録音を止めます」と書く。録音中のボットがこの書き込みを合図に止まる
-//   /提案      … 「〔提案〕…」としてその場に書く。篩の仕組みがあとで拾う
-//   メッセージの「アプリ」→「コモンズに提案」… その発言を〔提案〕として書き直す
-//   /使い方    … コマンドの一覧（本人にだけ見える）
+//   /record start … 「準備しています」を返し、repository_dispatch（discord-record）で録音の仕事を起こす
+//   /record stop … 「⏹ 録音を止めます」と書く。録音中のボットがこの書き込みを合図に止まる
+//   /propose      … 「〔提案〕…」としてその場に書く。篩の仕組みがあとで拾う
+//   メッセージの「アプリ」→「Propose to Commons」… その発言を〔提案〕として書き直す
+//   /help    … コマンドの一覧（本人にだけ見える）
 // Claude の鍵は持たない。返事は runner が、Discord から渡された一時的な合鍵（interaction token、15分有効）で書き戻す。
 //
 // 必要な設定（Cloudflare の Worker の設定画面）
@@ -24,13 +24,13 @@ const DEFERRED_CHANNEL_MESSAGE = 5;
 const EPHEMERAL = 64;
 const STOP_MARK = "⏹ 録音を止めます"; // record.mjs と合わせる
 
-// /使い方 の中身。commands.json を変えたら、ここも合わせる
+// /help の中身。commands.json を変えたら、ここも合わせる
 const HELP = [
   "**コモンズのAIのコマンド**",
   "`/ai 質問` … コモンズのスキルを読んだAIに聞く",
-  "`/提案 内容` … スキルや仕組みへの提案を出す（篩にかけてから入る）",
-  "`/録音 開始` → `/録音 終了` … 入っているボイスチャンネルを録り、文字起こし・議事録・改善の提案まで作る（全員抜けても止まる）",
-  "発言の「…」→「アプリ」→「コモンズに提案」… その発言を提案にする",
+  "`/propose 内容` … スキルや仕組みへの提案を出す（篩にかけてから入る）",
+  "`/record start` → `/record stop` … 入っているボイスチャンネルを録り、文字起こし・議事録・改善の提案まで作る（全員抜けても止まる）",
+  "発言の「…」→「アプリ」→「Propose to Commons」… その発言を提案にする",
   "自分の Claude からは「Discord で何話してた？」「Discord に共有して」で読み書きできる",
 ].join("\n");
 
@@ -75,16 +75,16 @@ export default {
     }
     if (name === "record" && sub?.name === "start") {
       const payload = { event_type: "discord-record", client_payload: { ...base, command: "record" } };
-      ctx.waitUntil(dispatch(env, payload, "録音を始められませんでした。少し待って、もう一度 `/録音 開始` を打ってください。"));
+      ctx.waitUntil(dispatch(env, payload, "録音を始められませんでした。少し待って、もう一度 `/record start` を打ってください。"));
       return say("⏳ 録音の準備をしています（ボットが入るまで1分ほど）。");
     }
     if (name === "record" && sub?.name === "stop") {
       return say(`${STOP_MARK}（${userName || "参加者"}さん）。文字起こしと議事録は、できしだいボイスチャンネルのチャットに置きます。`);
     }
     if (name === "propose") {
-      return say(`〔提案〕${String(options.text || "").trim()}\n-# ${userName || "参加者"}さんが /提案 で出しました`);
+      return say(`〔提案〕${String(options.text || "").trim()}\n-# ${userName || "参加者"}さんが /propose で出しました`);
     }
-    if (name === "コモンズに提案") {
+    if (name === "Propose to Commons") {
       const target = body.data?.resolved?.messages?.[body.data?.target_id];
       if (!target?.content) return say("その発言には、提案にできる文がありません。", true);
       const author = target.author?.global_name || target.author?.username || "参加者";
@@ -92,7 +92,7 @@ export default {
       return say(`〔提案〕${target.content.slice(0, 1700)}\n-# ${author}さんの発言（${link}）を、${userName || "参加者"}さんが提案にしました`);
     }
     if (name === "help") return say(HELP, true);
-    return say("そのコマンドは、まだこのボットが知りません。`/使い方` で一覧を見られます。", true);
+    return say("そのコマンドは、まだこのボットが知りません。`/help` で一覧を見られます。", true);
   },
 };
 
