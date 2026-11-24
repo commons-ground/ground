@@ -1,4 +1,4 @@
-"""Discord のサーバーに /ai コマンドを登録する（最初に1回、コマンドを変えたときにもう1回）。
+"""Discord のサーバーに、commands.json のコマンドを登録する（最初に1回、コマンドを変えたときにもう1回）。
 
 環境変数
   DISCORD_BOT_TOKEN … ボットの鍵
@@ -6,22 +6,14 @@
   GUILD_ID          … 登録するサーバーのID（サーバーごとの登録はすぐ使えるようになる）
 """
 
+import json
 import os
 import sys
+from pathlib import Path
 
 import requests
 
-COMMANDS = [
-    {
-        "name": "ai",
-        "description": "コモンズのAIに聞く",
-        "type": 1,
-        "options": [
-            {"type": 3, "name": "question", "name_localizations": {"ja": "質問"},
-             "description": "聞きたいこと", "required": True, "max_length": 2000},
-        ],
-    }
-]
+COMMANDS = json.loads((Path(__file__).parent / "commands.json").read_text())
 
 
 def main() -> int:

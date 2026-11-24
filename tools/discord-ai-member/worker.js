@@ -1,8 +1,13 @@
 // discord-ai-member の受け口（Cloudflare Worker）
 //
-// Discord のスラッシュコマンド（/ai）を受けて、すぐに「考え中…」を返し、
-// GitHub の repository_dispatch でコモンズのリポジトリに渡す。Claude の鍵は持たない。
-// 返事は runner が、Discord から渡された一時的な合鍵（interaction token、15分有効）で書き戻す。
+// Discord のコマンド（commands.json）を受ける。どのコマンドも、ここで3秒以内に一言返す。
+//   /ai        … 「考え中…」を返し、repository_dispatch（discord-interaction）でリポジトリの Claude に渡す
+//   /録音 開始 … 「準備しています」を返し、repository_dispatch（discord-record）で録音の仕事を起こす
+//   /録音 終了 … 「⏹ 録音を止めます」と書く。録音中のボットがこの書き込みを合図に止まる
+//   /提案      … 「〔提案〕…」としてその場に書く。篩の仕組みがあとで拾う
+//   メッセージの「アプリ」→「コモンズに提案」… その発言を〔提案〕として書き直す
+//   /使い方    … コマンドの一覧（本人にだけ見える）
+// Claude の鍵は持たない。返事は runner が、Discord から渡された一時的な合鍵（interaction token、15分有効）で書き戻す。
 //
 // 必要な設定（Cloudflare の Worker の設定画面）
 //   変数    DISCORD_PUBLIC_KEY … Discord 開発者画面「一般情報」の公開キー（秘密ではない）
@@ -14,7 +19,20 @@
 const PING = 1;
 const APPLICATION_COMMAND = 2;
 const PONG = 1;
+const CHANNEL_MESSAGE = 4;
 const DEFERRED_CHANNEL_MESSAGE = 5;
+const EPHEMERAL = 64;
+const STOP_MARK = "⏹ 録音を止めます"; // record.mjs と合わせる
+
+// /使い方 の中身。commands.json を変えたら、ここも合わせる
+const HELP = [
+  "**コモンズのAIのコマンド**",
+  "`/ai 質問` … コモンズのスキルを読んだAIに聞く",
+  "`/提案 内容` … スキルや仕組みへの提案を出す（篩にかけてから入る）",
+  "`/録音 開始` → `/録音 終了` … 入っているボイスチャンネルを録り、文字起こし・議事録・改善の提案まで作る（全員抜けても止まる）",
+  "発言の「…」→「アプリ」→「コモンズに提案」… その発言を提案にする",
+  "自分の Claude からは「Discord で何話してた？」「Discord に共有して」で読み書きできる",
+].join("\n");
 
 export default {
   async fetch(request, env, ctx) {
@@ -32,30 +50,53 @@ export default {
     if (body.type === PING) return json({ type: PONG });
     if (body.type !== APPLICATION_COMMAND) return json({ type: PONG });
 
-    // 2. 質問と、聞いた人の呼び名を取り出す
-    const options = Object.fromEntries((body.data?.options || []).map((o) => [o.name, o.value]));
     const user = body.member?.user || body.user || {};
-    const payload = {
-      event_type: "discord-interaction",
-      client_payload: {
-        command: body.data?.name || "",
-        question: String(options.question || options["質問"] || ""),
-        application_id: body.application_id,
-        token: body.token,
-        channel_id: body.channel_id || "",
-        guild_id: body.guild_id || "",
-        user_id: user.id || "",
-        user_name: body.member?.nick || user.global_name || user.username || "",
-      },
+    const userName = body.member?.nick || user.global_name || user.username || "";
+    const name = body.data?.name || "";
+    const sub = body.data?.options?.find((o) => o.type === 1);
+    const options = Object.fromEntries(((sub ? sub.options : body.data?.options) || []).map((o) => [o.name, o.value]));
+    const base = {
+      application_id: body.application_id,
+      token: body.token,
+      channel_id: body.channel_id || "",
+      guild_id: body.guild_id || "",
+      user_id: user.id || "",
+      user_name: userName,
     };
+    const say = (content, ephemeral = false) =>
+      json({ type: CHANNEL_MESSAGE, data: { content, allowed_mentions: { parse: [] }, ...(ephemeral ? { flags: EPHEMERAL } : {}) } });
 
-    // 3. Discord には3秒以内に答える決まりなので、「考え中…」を先に返し、GitHub への受け渡しは後ろで行う
-    ctx.waitUntil(dispatch(env, payload));
-    return json({ type: DEFERRED_CHANNEL_MESSAGE });
+    // 2. コマンドごとに振り分ける
+    if (name === "ai") {
+      const payload = { event_type: "discord-interaction", client_payload: { ...base, command: "ai", question: String(options.question || "") } };
+      // Discord には3秒以内に答える決まりなので、「考え中…」を先に返し、GitHub への受け渡しは後ろで行う
+      ctx.waitUntil(dispatch(env, payload, "いまAIを呼び出せませんでした。少し待って、もう一度 /ai で聞いてください。"));
+      return json({ type: DEFERRED_CHANNEL_MESSAGE });
+    }
+    if (name === "record" && sub?.name === "start") {
+      const payload = { event_type: "discord-record", client_payload: { ...base, command: "record" } };
+      ctx.waitUntil(dispatch(env, payload, "録音を始められませんでした。少し待って、もう一度 `/録音 開始` を打ってください。"));
+      return say("⏳ 録音の準備をしています（ボットが入るまで1分ほど）。");
+    }
+    if (name === "record" && sub?.name === "stop") {
+      return say(`${STOP_MARK}（${userName || "参加者"}さん）。文字起こしと議事録は、できしだいボイスチャンネルのチャットに置きます。`);
+    }
+    if (name === "propose") {
+      return say(`〔提案〕${String(options.text || "").trim()}\n-# ${userName || "参加者"}さんが /提案 で出しました`);
+    }
+    if (name === "コモンズに提案") {
+      const target = body.data?.resolved?.messages?.[body.data?.target_id];
+      if (!target?.content) return say("その発言には、提案にできる文がありません。", true);
+      const author = target.author?.global_name || target.author?.username || "参加者";
+      const link = `https://discord.com/channels/${body.guild_id}/${body.channel_id}/${target.id}`;
+      return say(`〔提案〕${target.content.slice(0, 1700)}\n-# ${author}さんの発言（${link}）を、${userName || "参加者"}さんが提案にしました`);
+    }
+    if (name === "help") return say(HELP, true);
+    return say("そのコマンドは、まだこのボットが知りません。`/使い方` で一覧を見られます。", true);
   },
 };
 
-async function dispatch(env, payload) {
+async function dispatch(env, payload, failText) {
   const res = await fetch(`https://api.github.com/repos/${env.REPO}/dispatches`, {
     method: "POST",
     headers: {
@@ -74,7 +115,7 @@ async function dispatch(env, payload) {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      content: "いまAIを呼び出せませんでした。少し待って、もう一度 /ai で聞いてください。",
+      content: failText,
       allowed_mentions: { parse: [] },
     }),
   }).catch(() => {});
