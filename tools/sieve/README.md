@@ -6,7 +6,7 @@
 
 | 出来事 | 起こすもの |
 | --- | --- |
-| Discord の `/propose`・「Propose to Commons」 | 受け口（`tools/discord-ai-member/worker.js`）が repository_dispatch `sieve-intake` を送る |
+| Discord の `/propose`・「コモンズに提案」 | 受け口（`tools/discord-ai-member/worker.js`）が送る repository_dispatch `discord-propose` を、`#提案` に載せる仕事（`discord-propose.yml`）と篩が両方受け取る |
 | 提案の Issue を作る（様式「提案（篩にかける）」、またはタイトルが「〔提案〕」） | GitHub の `issues: opened` |
 | カード（ラベル「篩」の Issue）にコメントが付く | GitHub の `issue_comment: created` |
 
@@ -20,7 +20,7 @@
 | ground 自身の呼び出し | `.github/workflows/sieve-here.yml` |
 | 篩の係への指示 | `tools/sieve/agent.md` |
 | 篩の手順 | `plugins/core/skills/sieve/SKILL.md` |
-| Discord に知らせる | `tools/sieve/discord_post.py` |
+| Discord に知らせる | `tools/sieve/discord_post.py`（呼び出し側の `config.json` の `sieve_channel`、無ければ `#スキルの相談`） |
 | 提案の様式 | `.github/ISSUE_TEMPLATE/proposal.yml` |
 
 ## 呼び出し側の workflow（各コモンズのリポジトリ）
@@ -28,7 +28,7 @@
 ```yaml
 on:
   repository_dispatch:
-    types: [sieve-intake]
+    types: [discord-propose]
   issues:
     types: [opened]
   issue_comment:
@@ -61,4 +61,4 @@ jobs:
 ## まだ無いもの
 
 - 別のリポジトリへの書き込み。いまの鍵は呼び出し側のリポジトリにしか書けないので、行き先が ground のカードにはラベル `行き先:ground` を付け、人の Claude が harvest で運ぶ
-- 通話の〔提案〕（`tools/discord-meeting`）と AI の返事の〔覚えておく〕を、自動で篩に渡す道。いまは Discord に出たものを harvest で拾う
+- `#提案` に直接書いた発言、通話の〔提案〕（`tools/discord-meeting`）、AI の返事の〔覚えておく〕を、自動で篩に渡す道。いまは Discord に出たものを harvest で拾う

@@ -7,7 +7,7 @@
 
 | kind | 起きたこと | すること |
 | --- | --- | --- |
-| `discord-propose` | Discord で `/propose` か「Propose to Commons」が使われた | sieve の2〜5。カードを作るか、既にあるカードに声を足す |
+| `discord-propose` | Discord で `/propose` か「コモンズに提案」が使われた | sieve の2〜5。カードを作るか、既にあるカードに声を足す |
 | `issue-opened` | 提案の Issue が作られた | その Issue をカードとして整える（3の一般化で本文を書き直し、ラベル `篩` を付ける）。そのあと2〜5 |
 | `issue-comment` | カードにコメントが付いた | 「取り下げ」や反対の声なら sieve の6、声の追加なら2、質問なら答える |
 
@@ -16,10 +16,10 @@
 ### 使える道具
 - `gh`：カードの検索・作成・コメント・ラベル、プルリクエストの作成。ラベルが無ければ `gh label create <名前> --force` で作る
 - `git`：ブランチを切って直す。main に直接入れない
-- Discord に知らせる：`python3 "$SIEVE_TOOLS/discord_post.py" "<文>"`（提案のチャンネルに書く。中と大のときだけ。2行まで、カードのリンク付き）
+- Discord に知らせる：`python3 "$SIEVE_TOOLS/discord_post.py" "<文>"`（`#スキルの相談` に書く。中と大のときだけ。2行まで、カードのリンク付き）
 
 ### 終わり方
-- 最後に `.sieve/result.json` に `{"card_url": "...", "tier": "小|中|大|差し戻す|知識|保留", "summary": "1行"}` を書く。受け口から来た出来事なら、この1行が Discord の元の場所に返る
+- 最後に `.sieve/result.json` に `{"card_url": "...", "tier": "小|中|大|差し戻す|知識|保留", "summary": "1行"}` を書く。受け口から来た出来事なら、この1行が、提案を出した本人にだけ Discord で返る
 - 行き先が別のリポジトリで、そこに書き込めないときは、カードにラベル `行き先:<リポジトリ名>` を付けて終える。人の Claude が harvest で運ぶ
 
 ### 守ること

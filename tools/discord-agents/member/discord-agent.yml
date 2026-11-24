@@ -1,0 +1,21 @@
+# 自分の分身の AI を動かす（自分の非公開リポジトリの .github/workflows/ に置く）
+# 鍵は secrets に1つだけ置く：CLAUDE_CODE_OAUTH_TOKEN（手元で claude setup-token）
+name: discord-agent
+
+on:
+  repository_dispatch:
+    types: [discord-agent]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  reply:
+    uses: commons-ground/ground/.github/workflows/discord-agent.yml@main
+    with:
+      payload: ${{ toJSON(github.event.client_payload) }}
+      agent_dir: agent
+      commons: commons-ground/winegrowers
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

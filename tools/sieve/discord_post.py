@@ -1,7 +1,7 @@
-"""篩の仕事から、Discord の提案のチャンネルに短く知らせる。
+"""篩の仕事から、Discord に短く知らせる。
 
 使い方：python3 discord_post.py "知らせる文"
-環境変数：DISCORD_BOT_TOKEN（無ければ何もせずに終わる）、PROPOSAL_CHANNEL（チャンネル名。既定「スキルの相談」）
+環境変数：DISCORD_BOT_TOKEN（無ければ何もせずに終わる）、SIEVE_CHANNEL（チャンネル名。既定「スキルの相談」。#提案 には書かない。書いたものが提案として拾われるため）
 ボットが入っているサーバーのうち、名前が合う最初のテキストチャンネルに書く。人やロールは呼び出さない。
 """
 import json
@@ -30,7 +30,7 @@ def call(method: str, path: str, token: str, body: dict | None = None):
 def main() -> int:
     text = " ".join(sys.argv[1:]).strip()
     token = os.environ.get("DISCORD_BOT_TOKEN", "")
-    name = os.environ.get("PROPOSAL_CHANNEL", "") or "スキルの相談"
+    name = os.environ.get("SIEVE_CHANNEL", "") or "スキルの相談"
     if not text:
         print("知らせる文が空です")
         return 1
