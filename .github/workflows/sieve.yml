@@ -123,11 +123,13 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           CH: ${{ github.event.client_payload.channel_id }}
           MSG: ${{ github.event.client_payload.message_id }}
+          REPLY_JQ: '{"小":"ちいさめの直しだね、そのまま入れとくよ 👍","中":"ちゅうくらい！しばらくためしてみよ 🧪","大":"おおきめ！みんなで見てほしいやつ 👀","差し戻す":"これはじぶん用のメモにしとこ 🙏","知識":"ちしきのほうに入れとくね 📚","保留":"いったんおやすみ 💤"} as $t | "🧺 ふるいにかけたよ〜！ " + ($t[.tier // ""] // (.tier // "")) + "\n" + (.summary // "") + "\n" + (.card_url // "")'
         run: |
           [ -f .sieve/result.json ] || { echo "結果が無い"; exit 0; }
           # 提案でない発言（あいさつや質問）には返事をしない
           [ -n "$(jq -r '.card_url // ""' .sieve/result.json)" ] || { echo "カードなし"; exit 0; }
-          TEXT=$(jq -r '"🧺 篩で受け付けました（" + (.tier // "?") + "）：" + (.summary // "") + "\n" + (.card_url // "")' .sieve/result.json)
+          # 返事の文面は REPLY_JQ（コモンズの Discord の口調：ひらがな多め・ゆるめ）
+          TEXT=$(jq -r "$REPLY_JQ" .sieve/result.json)
           python3 "$SIEVE_TOOLS/safe.py" reply "$CH" "$MSG" "$TEXT" || true
 
       - name: 受け口から来た提案なら、出した本人にだけ見える1行で、篩のカードを返す
@@ -135,9 +137,10 @@ jobs:
         env:
           APP_ID: ${{ github.event.client_payload.application_id }}
           TOKEN: ${{ github.event.client_payload.token }}
+          REPLY_JQ: '{"小":"ちいさめの直しだね、そのまま入れとくよ 👍","中":"ちゅうくらい！しばらくためしてみよ 🧪","大":"おおきめ！みんなで見てほしいやつ 👀","差し戻す":"これはじぶん用のメモにしとこ 🙏","知識":"ちしきのほうに入れとくね 📚","保留":"いったんおやすみ 💤"} as $t | "🧺 ふるいにかけたよ〜！ " + ($t[.tier // ""] // (.tier // "")) + "\n" + (.summary // "") + "\n" + (.card_url // "")'
         run: |
           [ -f .sieve/result.json ] || { echo "結果が無い"; exit 0; }
-          MSG=$(jq -r '"🧺 篩で受け付けました（" + (.tier // "?") + "）：" + (.summary // "") + "\n" + (.card_url // "")' .sieve/result.json)
+          MSG=$(jq -r "$REPLY_JQ" .sieve/result.json)
           jq -n --arg c "$MSG" '{content: $c, flags: 64, allowed_mentions: {parse: []}}' \
             | curl -sS -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' \
                 --data @- "https://discord.com/api/v10/webhooks/$APP_ID/$TOKEN" || true
