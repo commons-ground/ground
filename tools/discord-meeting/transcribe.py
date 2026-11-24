@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """録った通話を文字にする（discord-meeting の2段目）。
 
-record.mjs が書いた segments/<開始ミリ秒>_<ユーザーID>.ogg を、話した順に faster-whisper で文字にし、
+record.mjs が書いた segments/<開始ミリ秒>_<ユーザーID>.pcm（48kHz・2ch・16bit）を、話した順に faster-whisper で文字にし、
 「[分:秒] 名前：話した内容」の transcript.md にする。話す人ごとに音が分かれているので、
 誰が話したかは推測しなくてよい。
 
@@ -35,7 +35,8 @@ model = WhisperModel(a.model, device="cpu", compute_type="int8", cpu_threads=0)
 
 def pcm16k(path: Path) -> np.ndarray:
     raw = subprocess.run(
-        ["ffmpeg", "-loglevel", "error", "-i", str(path), "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
+        ["ffmpeg", "-loglevel", "error", "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", str(path),
+         "-ac", "1", "-ar", "16000", "-f", "s16le", "-"],
         capture_output=True,
         check=True,
     ).stdout
@@ -48,7 +49,7 @@ def mmss(ms: float) -> str:
 
 
 lines, spoken, skipped = [], 0.0, 0
-for f in sorted((rec / "segments").glob("*.ogg")):
+for f in sorted((rec / "segments").glob("*.pcm")):
     offset_ms, user_id = f.stem.split("_", 1)
     try:
         audio = pcm16k(f)

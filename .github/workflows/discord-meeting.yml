@@ -86,11 +86,13 @@ jobs:
           pip install -q claude-agent-sdk requests
           python ground/tools/discord-meeting/digest.py
       - name: 失敗したらチャンネルで知らせる
-        if: failure() && steps.rec.outputs.ok == 'true'
+        if: failure()
         env:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          PAYLOAD: ${{ inputs.payload }}
         run: |
-          CH=$(jq -r .channel_id "$RUNNER_TEMP/rec/meta.json")
+          # 録れていればボイスチャンネル、録る前に落ちたら /record start を打ったチャンネルに書く
+          CH=$(jq -r .channel_id "$RUNNER_TEMP/rec/meta.json" 2>/dev/null || echo "$PAYLOAD" | jq -r .channel_id)
           curl -s -o /dev/null -X POST "https://discord.com/api/v10/channels/$CH/messages" \
             -H "Authorization: Bot $DISCORD_BOT_TOKEN" -H "Content-Type: application/json" \
-            -d '{"content":"録音のあと、文字起こしか議事録づくりで止まりました。世話役の Claude に「discord-meeting の失敗を見て」と頼んでください。","allowed_mentions":{"parse":[]}}'
+            -d '{"content":"⚠️ 録音か、そのあとの文字起こし・議事録づくりで止まりました。世話役の Claude に「discord-meeting の失敗を見て」と頼んでください。","allowed_mentions":{"parse":[]}}'
