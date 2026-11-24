@@ -1,10 +1,10 @@
 // コモンズの通話を録る（discord-meeting の1段目）。
 //
-// /録音 開始 を打った人がいるボイスチャンネルに、ボットが入って録る。
+// /record start を打った人がいるボイスチャンネルに、ボットが入って録る。
 // 話している人ごと・話のかたまりごとに、Opus のまま .ogg に書き出す（あとで transcribe.py が文字にする）。
 // 次のどれかで止まる：
 //   - 人間が全員抜けて、EMPTY_GRACE_SEC 秒たった
-//   - /録音 終了（受け口が「⏹ 録音を止めます」と書く。ボット自身のその書き込みを合図にする）
+//   - /record stop（受け口が「⏹ 録音を止めます」と書く。ボット自身のその書き込みを合図にする）
 //   - MAX_MINUTES 分たった
 //
 // 音声・発言の中身はログに出さない（公開リポジトリの Actions で動くため）。
@@ -69,7 +69,7 @@ client.once(Events.ClientReady, async () => {
   const vs = guild.voiceStates.cache.get(p.user_id);
   const channel = vs?.channel;
   if (!channel) {
-    await editOriginal("先にボイスチャンネルに入ってから、もう一度 `/録音 開始` を打ってください。");
+    await editOriginal("先にボイスチャンネルに入ってから、もう一度 `/record start` を打ってください。");
     stop("not-in-voice");
     closeAll();
     return;
@@ -136,7 +136,7 @@ client.once(Events.ClientReady, async () => {
     } else emptySince = 0;
   }, 5000);
 
-  // /録音 終了 の合図（受け口がボットの名前で書く）
+  // /record stop の合図（受け口がボットの名前で書く）
   client.on(Events.MessageCreate, (m) => {
     if (m.author.id === client.user.id && m.guildId === guild.id && m.content.includes(STOP_MARK)) stop("command");
   });
@@ -145,7 +145,7 @@ client.once(Events.ClientReady, async () => {
   await post(
     channel.id,
     `🔴 録音中です（${p.user_name || "参加者"}さんが開始）。\n` +
-      "全員が抜けるか `/録音 終了` で止まり、文字起こしと議事録をこのチャンネルに置きます。録られたくない人は、いったん抜けてください。",
+      "全員が抜けるか `/record stop` で止まり、文字起こしと議事録をこのチャンネルに置きます。録られたくない人は、いったん抜けてください。",
   );
 
   await done;

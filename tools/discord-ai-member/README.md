@@ -4,19 +4,19 @@
 
 ## コマンド
 
-AI とのやり取りは、すべて Discord のコマンドの形にそろえます。打ち始めると候補が出るので、覚えなくても使えます。日本語の Discord では日本語の名前で出ます（英語の Discord では括弧の中の名前）。
+AI とのやり取りは、すべて Discord のコマンドの形にそろえます。名前は短い英語にし、説明は日本語にします。`/` を打つと候補と説明が出るので、覚えなくても使えます。
 
 | コマンド | すること | どこで動くか |
 |:--|:--|:--|
-| `/ai 質問`（ai） | AI に聞く | GitHub Actions の Claude |
-| `/提案 内容`（propose） | 提案を〔提案〕として書く。篩の仕組みがあとで拾う | 受け口だけ |
-| 発言の「アプリ」→「コモンズに提案」 | その発言を〔提案〕として書き直す | 受け口だけ |
-| `/録音 開始`・`/録音 終了`（record） | 通話を録って、議事録と提案まで作る（`tools/discord-meeting`） | GitHub Actions |
-| `/使い方`（help） | コマンドの一覧（本人にだけ見える） | 受け口だけ |
+| `/ai 質問` | AI に聞く | GitHub Actions の Claude |
+| `/propose 内容` | 提案を〔提案〕として書く。篩の仕組みがあとで拾う | 受け口だけ |
+| 発言の「アプリ」→「Propose to Commons」 | その発言を〔提案〕として書き直す | 受け口だけ |
+| `/record start`・`/record stop` | 通話を録って、議事録と提案まで作る（`tools/discord-meeting`） | GitHub Actions |
+| `/help` | コマンドの一覧（本人にだけ見える） | 受け口だけ |
 
 コマンドを足すとき：
 
-1. `commands.json` に足す（名前は英語、`name_localizations` の `ja` に日本語の名前）
+1. `commands.json` に足す（名前は短い英語、説明は日本語）
 2. `worker.js` に振り分けを足す。3秒で済むものは受け口でその場に返し、時間がかかるものは repository_dispatch で GitHub Actions に渡す。`HELP` も合わせる
 3. 受け口を置き直し、`discord-commands` の workflow で登録し直す
 
