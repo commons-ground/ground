@@ -9,6 +9,8 @@ AI が自分で書いた文を AI が点検するだけでは抜けが残るた�
 使い方
   python3 safe.py gh issue create --title "…" --body-file card.md --label 篩   … gh の書き込み（issue・pr・label）
   python3 safe.py push <ブランチ>                    … main との差分の、足した行を点検してから push
+  python3 safe.py push <ブランチ> --dir .sieve/ground  … 行き先が ground のとき。手元の ground の写しから、点検してから push
+  python3 safe.py gh pr create -R commons-ground/ground …  … 別のリポジトリへの書き込み（篩のアプリの鍵があるときだけ）
   python3 safe.py discord "<文>"                      … 知らせのチャンネル（既定 #スキルの相談）に書き、投稿のリンクを出す
   python3 safe.py reply <チャンネルID> <発言ID> "<文>"   … Discord の元の発言に返事する
   python3 safe.py reactions <Discord の発言のリンク>   … その発言の 👍・👎 の数を読む（読むだけ）
@@ -36,6 +38,8 @@ WRITE = {
     "pr": {"create", "edit", "comment", "ready", "close"},
     "label": {"create", "edit"},
 }
+# 別のリポジトリに書くときは、篩のアプリの鍵（SIEVE_CROSS_TOKEN）を使う。書けるのはこの団体のリポジトリだけ
+OWNER = "commons-ground"
 TEXT_FLAGS = {"--title", "-t", "--body", "-b", "--comment", "-c", "--description", "-d"}
 FILE_FLAGS = {"--body-file", "-F"}
 
@@ -82,18 +86,58 @@ def run_gh(args: list[str]) -> int:
             texts.append(a)  # gh issue comment 12 --body … の番号や、位置で渡した文も点検する
         i += 1
     check("\n".join(texts), f"gh {args[0]} {args[1]}")
-    return subprocess.run(["gh", *args]).returncode
+    return subprocess.run(["gh", *args], env=env_for(target_repo(args))).returncode
 
 
-def run_push(branch: str) -> int:
+def target_repo(args: list[str]) -> str:
+    for i, a in enumerate(args):
+        key, _, val = a.partition("=")
+        if key in ("-R", "--repo"):
+            return val or (args[i + 1] if i + 1 < len(args) else "")
+    return ""
+
+
+def env_for(repo: str) -> dict:
+    """呼び出し側のリポジトリならそのままの鍵、この団体の別のリポジトリなら篩のアプリの鍵で書く。"""
+    env = dict(os.environ)
+    here = os.environ.get("GITHUB_REPOSITORY", "")
+    if not repo or repo == here:
+        return env
+    if not repo.startswith(OWNER + "/"):
+        print(f"{OWNER} の外のリポジトリには書きません。")
+        sys.exit(2)
+    token = os.environ.get("SIEVE_CROSS_TOKEN", "")
+    if not token:
+        print("別のリポジトリに書く鍵（篩のアプリ）がありません。カードにラベル「行き先:<リポジトリ名>」を付けて終えてください。")
+        sys.exit(2)
+    env["GH_TOKEN"] = token
+    return env
+
+
+def run_push(branch: str, workdir: str = "") -> int:
     if branch in ("main", "master") or branch.startswith("-"):
         print("main には push しません。ブランチを切ってください。")
         return 2
-    subprocess.run(["git", "fetch", "-q", "origin", "main"], check=False)
-    diff = subprocess.run(["git", "diff", "origin/main...HEAD"], capture_output=True, text=True).stdout
+    git = ["git"] + (["-C", workdir] if workdir else [])
+    auth: list[str] = []
+    if workdir:
+        # 手元の写し（.sieve/ の下）からは、篩のアプリの鍵で push する。鍵は写しの設定に残さず、この1回だけ渡す
+        if not os.path.realpath(workdir).startswith(os.path.realpath(".sieve") + os.sep):
+            print("--dir に渡せるのは .sieve/ の下の写しだけです。")
+            return 2
+        token = os.environ.get("SIEVE_CROSS_TOKEN", "")
+        if not token:
+            print("別のリポジトリに書く鍵（篩のアプリ）がありません。カードにラベル「行き先:<リポジトリ名>」を付けて終えてください。")
+            return 2
+        import base64
+        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+        auth = ["-c", f"http.https://github.com/.extraheader=AUTHORIZATION: basic {basic}"]
+    subprocess.run(git + ["fetch", "-q", "origin", "main"], check=False)
+    diff = subprocess.run(git + ["diff", "origin/main...HEAD"], capture_output=True, text=True).stdout
     added = "\n".join(line[1:] for line in diff.splitlines() if line.startswith("+") and not line.startswith("+++"))
     check(added, f"ブランチ {branch} の変更")
-    return subprocess.run(["git", "push", "-u", "origin", f"HEAD:refs/heads/{branch}"]).returncode
+    cmd = ["git", *auth] + (["-C", workdir] if workdir else []) + ["push", "-u", "origin", f"HEAD:refs/heads/{branch}"]
+    return subprocess.run(cmd).returncode
 
 
 def discord(method: str, path: str, body: dict | None = None):
@@ -169,6 +213,8 @@ def main(argv: list[str]) -> int:
         return run_gh(rest)
     if cmd == "push" and len(rest) == 1:
         return run_push(rest[0])
+    if cmd == "push" and len(rest) == 3 and rest[1] == "--dir":
+        return run_push(rest[0], rest[2])
     if cmd == "discord" and rest:
         return run_discord(" ".join(rest))
     if cmd == "reply" and len(rest) >= 3:
