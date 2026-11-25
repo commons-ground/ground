@@ -1,0 +1,65 @@
+# コモンズの Cloudflare Worker を、GitHub の main の中身で置き直す。
+# 動かせるのは手動の実行だけ（Actions →「deploy-workers」→ Run workflow）。
+# 鍵は environment「cloudflare」に置く。environment に「確認する人」を設定すれば、実行の前に人の承認を待つ。
+#
+# 置き直すのはコードだけ。Worker の画面で入れた変数・secret・KV はそのまま残す（keep_bindings）。
+# 毎分の見回り（Cron トリガー）も消えない。
+#
+# environment「cloudflare」に要るもの
+#   secret  CLOUDFLARE_API_TOKEN   Cloudflare の API トークン（権限：アカウント → Workers Scripts → 編集 だけ）
+#   変数    CLOUDFLARE_ACCOUNT_ID  Cloudflare のアカウント ID
+name: deploy-workers
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 置き直す Worker
+        required: true
+        type: choice
+        options:
+          - discord-agents（中継）
+          - discord-hook（コマンドの受け口）
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-workers
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - name: 置き直す
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            discord-agents*)
+              NAME=commons-discord-agents; FILE=tools/discord-agents/router.js; MAIN=router.js
+              META='{"main_module":"router.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text","kv_namespace"]}'
+              ;;
+            discord-hook*)
+              # 受け口は、中継の入口 Dispatcher をサービスバインディング ROUTER で呼ぶ（期限つきのトークンを持たない）
+              NAME=commons-discord-hook; FILE=tools/discord-ai-member/worker.js; MAIN=worker.js
+              META='{"main_module":"worker.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text"],"bindings":[{"type":"service","name":"ROUTER","service":"commons-discord-agents","entrypoint":"Dispatcher"}]}'
+              ;;
+            *) echo "知らない Worker です：$TARGET"; exit 1 ;;
+          esac
+          API="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/$NAME"
+          printf '%s' "$META" > meta.json
+          curl -sS -X PUT "$API" -H "Authorization: Bearer $CF_TOKEN" \
+            -F "metadata=@meta.json;type=application/json" \
+            -F "$MAIN=@$FILE;type=application/javascript+module" > put.json
+          jq -e '.success' put.json > /dev/null || { jq '.errors' put.json; exit 1; }
+          echo "置き直しました：$NAME（$(git rev-parse --short HEAD)）"
+          echo "### 置き直した設定" >> "$GITHUB_STEP_SUMMARY"
+          curl -sS "$API/settings" -H "Authorization: Bearer $CF_TOKEN" | jq -r '.result.bindings[] | "- \(.type)：\(.name)"' >> "$GITHUB_STEP_SUMMARY"
+          curl -sS "$API/schedules" -H "Authorization: Bearer $CF_TOKEN" | jq -r '"- 見回り：" + ([.result.schedules[].cron] | join(", "))' >> "$GITHUB_STEP_SUMMARY"

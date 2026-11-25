@@ -63,3 +63,10 @@ AI 用のロールは、誰にも付けないメンション専用のロール�
 3. コネクタ（受け取り箱）の変数 `DISCORD_AI_ROLES` に `{"持ち主のユーザーID": "ロールID"}` を足す
 
 中継の Worker には、ほかに `DISCORD_GUILD_ID`・`DISCORD_CHANNELS`・`PUBLIC_URL`（中継自身の URL）・`GITHUB_APP_ID` の変数、`DISCORD_BOT_TOKEN`・`GITHUB_APP_PRIVATE_KEY` の Secret、`STATE` の KV、毎分の Cron トリガーが要ります。GitHub アプリ「Commons Agents」の権限は Contents の Read and write だけです（repository_dispatch を送るのに GitHub が求める権限）。
+
+## 置き直し方
+
+中継（`router.js`）と、コマンドの受け口（`tools/discord-ai-member/worker.js`）は、GitHub の Actions →「deploy-workers」→ Run workflow で置き直す。置き直すのはコードだけで、Worker の画面で入れた変数・secret・KV・毎分の見回りはそのまま残る。受け口には、中継の入口 `Dispatcher` を呼ぶサービスバインディング `ROUTER` が付く。
+
+鍵は environment「cloudflare」に置く（secret `CLOUDFLARE_API_TOKEN`：権限は Workers Scripts の編集だけ、変数 `CLOUDFLARE_ACCOUNT_ID`）。
+
