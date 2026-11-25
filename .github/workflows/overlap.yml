@@ -1,0 +1,54 @@
+name: overlap
+# 開いている別のプルリクエストと同じファイルを変えていたら、コメントで知らせる。
+# 並行するセッションが同じところを直して、あとから直し直すのを減らすため。
+# 読むだけで、止めはしない（必須のチェックにはしない）。winegrowers からも workflow_call で呼ぶ。
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_call:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  overlap:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: 重なりを調べる
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          N: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          files() { gh api --paginate "repos/$REPO/pulls/$1/files" --jq '.[].filename' | sort -u; }
+          files "$N" > mine.txt
+          : > hits.md
+          for o in $(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].number'); do
+            [ "$o" = "$N" ] && continue
+            files "$o" > other.txt
+            same=$(comm -12 mine.txt other.txt || true)
+            [ -z "$same" ] && continue
+            {
+              echo "- #$o"
+              echo "$same" | sed 's/^/  - `/; s/$/`/'
+            } >> hits.md
+          done
+          MARK='<!-- overlap -->'
+          old=$(gh api --paginate "repos/$REPO/issues/$N/comments" --jq ".[] | select(.body | startswith(\"$MARK\")) | .id" | head -1)
+          if [ ! -s hits.md ]; then
+            [ -n "$old" ] && gh api -X DELETE "repos/$REPO/issues/comments/$old" >/dev/null
+            echo "重なりなし"; exit 0
+          fi
+          {
+            echo "$MARK"
+            echo "👀 開いている別のプルリクエストと、同じファイルを変えています。先に入ったほうに合わせて直すか、片方にまとめてください。"
+            echo
+            cat hits.md
+          } > body.md
+          if [ -n "$old" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$old" -F body=@body.md >/dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$N/comments" -F body=@body.md >/dev/null
+          fi
+          cat body.md >> "$GITHUB_STEP_SUMMARY"

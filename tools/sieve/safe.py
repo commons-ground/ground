@@ -4,6 +4,7 @@
 篩の係（Claude）は、GitHub への書き込み・ブランチの push・Discord への書き込みを、この門を通してしかできない
 （sieve.yml の allowedTools で、gh と git は読むだけ・手元の操作だけに絞ってある）。門は書く前に機械で点検し、
 個人や事業の情報らしき文字（電話番号・メール・各自の Notion や Drive の URL・金額）か、鍵の値が入っていたら書かない。
+GitHub（公開）に書くときは、Discord の参加者の名前も止める。
 AI が自分で書いた文を AI が点検するだけでは抜けが残るため（docs/sieve.md の「公開の前の点検」）。
 
 使い方
@@ -50,8 +51,38 @@ def secrets() -> list[str]:
             if len(v) >= 16 and any(w in k.upper() for w in ("TOKEN", "KEY", "SECRET", "PASSWORD"))]
 
 
-def check(text: str, where: str) -> None:
+def roster() -> set[str]:
+    """Discord の参加者の名前。公開の場所（GitHub）には出さない（Discord の中で返事するときは使ってよい）。
+    出来事の提案者と、読めればサーバーの名簿から集める。名簿が読めなくても止めない。"""
+    names: set[str] = set()
+    try:
+        with open(".sieve/event.json", encoding="utf-8") as f:
+            ev = json.load(f)
+        if str(ev.get("kind", "")).startswith("discord"):
+            names |= {ev.get("proposer") or "", ev.get("author") or ""}
+    except (OSError, ValueError):
+        pass
+    try:
+        for guild in discord("GET", "/users/@me/guilds") or []:
+            for m in discord("GET", f"/guilds/{guild['id']}/members?limit=1000") or []:
+                u = m.get("user") or {}
+                if u.get("bot"):
+                    continue
+                names |= {m.get("nick") or "", u.get("global_name") or "", u.get("username") or ""}
+    except Exception:  # noqa: BLE001  名簿を読む権限が無いときなど
+        pass
+    return {n.strip() for n in names if len(n.strip()) >= 2}
+
+
+def check(text: str, where: str, public: bool = True) -> None:
     hits = sorted({m.group(0) for m in PRIVATE.finditer(text or "")})
+    if public:
+        low = (text or "").lower()
+        named = [n for n in roster() if n.lower() in low]
+        if named:
+            print(f"書きませんでした：{where} に、参加者の名前が入っています（{len(named)}件）。"
+                  "公開の場所には「提案した人」「参加者」のように書いてください。")
+            sys.exit(2)
     if any(s in (text or "") for s in secrets()):
         hits.append("（鍵の値）")
     if hits:
@@ -165,7 +196,7 @@ def post(channel_id: str, text: str, reply_to: str | None = None) -> dict | None
 
 
 def run_discord(text: str) -> int:
-    check(text, "Discord への知らせ")
+    check(text, "Discord への知らせ", public=False)
     if not os.environ.get("DISCORD_BOT_TOKEN"):
         print("DISCORD_BOT_TOKEN が無いので、Discord には知らせなかった")
         return 0
@@ -181,7 +212,7 @@ def run_discord(text: str) -> int:
 
 
 def run_reply(channel_id: str, message_id: str, text: str) -> int:
-    check(text, "Discord への返事")
+    check(text, "Discord への返事", public=False)
     if not (channel_id.isdigit() and message_id.isdigit()):
         print("チャンネルIDと発言IDは数字で渡してください")
         return 2
