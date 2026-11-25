@@ -66,7 +66,7 @@ AI 用のロールは、誰にも付けないメンション専用のロール�
 
 ## 置き直し方
 
-中継（`router.js`）と、コマンドの受け口（`tools/discord-ai-member/worker.js`）は、GitHub の Actions →「deploy-workers」→ Run workflow で置き直す。置き直すのはコードだけで、Worker の画面で入れた変数・secret・KV・毎分の見回りはそのまま残る。受け口には、中継の入口 `Dispatcher` を呼ぶサービスバインディング `ROUTER` が付く。
+中継（`router.js` と、コマンドの受け口 `interactions.js`）は、GitHub の Actions →「deploy-workers」→ Run workflow で置き直す。置き直すのはコードだけで、Worker の画面で入れた変数・secret・KV・毎分の見回りはそのまま残る。Discord のコマンドは中継の `/interactions` が受ける（以前は別の Worker commons-discord-hook だった）。
 
 鍵は environment「cloudflare」に置く（secret `CLOUDFLARE_API_TOKEN`：権限は Workers Scripts の編集だけ、変数 `CLOUDFLARE_ACCOUNT_ID`）。
 

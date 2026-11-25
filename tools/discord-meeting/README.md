@@ -29,7 +29,7 @@ flowchart LR
 | 文字にする | `transcribe.py`（ポッドキャストの文字起こしと同じ faster-whisper の large-v3-turbo） |
 | 議事録と提案 | `digest.py`（core:harvest の1と2に従う Claude） |
 | 仕事の流れ | `.github/workflows/discord-meeting.yml`（各コモンズから呼び出す） |
-| コマンドと受け口 | `tools/discord-ai-member` の `commands.json`・`worker.js` |
+| コマンドと受け口 | `tools/discord-ai-member` の `commands.json`、受け口は `tools/discord-agents/interactions.js` |
 | 議事録・提案を出すチャンネル、上限額 | 呼び出し側の `discord/config.json` の `minutes_channel`・`proposal_channel`・`meeting_max_budget_usd` |
 
 ## 呼び出し側の workflow
@@ -53,7 +53,7 @@ jobs:
 ## 前もって要るもの
 
 - ボットに、ボイスチャンネルの「表示」「接続」の権限
-- 受け口の Worker を、コマンドを振り分ける版（`tools/discord-ai-member/worker.js`）にしておく
+- 受け口（中継の `/interactions`、`tools/discord-agents/interactions.js`）がコマンドを振り分ける版になっていること
 - コマンドの登録（`discord-commands` の workflow を1回動かす）
 
 ## 費用
