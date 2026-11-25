@@ -20,6 +20,7 @@ on:
         type: choice
         options:
           - discord-agents（中継）
+          - commons-mcp（コネクタ。winegrowers の servers/commons-mcp）
 
 permissions:
   contents: read
@@ -54,24 +55,33 @@ jobs:
                 META='{"main_module":"router.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text","kv_namespace","durable_object_namespace"]}'
               fi
               ;;
+            commons-mcp*)
+              # コネクタは TypeScript なので wrangler で組み立てて置く。変数は Worker の画面のものを残す（wrangler.jsonc の keep_vars）
+              NAME=winegrowers-commons-mcp; MAIN=""
+              git clone -q --depth 1 https://github.com/commons-ground/winegrowers /tmp/wg
+              ;;
             *) echo "知らない Worker です：$TARGET"; exit 1 ;;
           esac
           API="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/$NAME"
           # 戻し先：いま動いている版
           PREV=$(curl -sS "$API/deployments" -H "Authorization: Bearer $CF_TOKEN" | jq -r '.result.deployments[0].versions[0].version_id // empty')
-          printf '%s' "$META" > meta.json
-          curl -sS -X PUT "$API" -H "Authorization: Bearer $CF_TOKEN" \
-            -F "metadata=@meta.json;type=application/json" \
-            -F "$MAIN=@$FILE;type=application/javascript+module" "${EXTRA[@]}" > put.json
-          jq -e '.success' put.json > /dev/null || { jq '.errors' put.json; exit 1; }
-          # 確かめる：URL を開いて、決まった返事（中継は discord-agents、受け口は ok）が30秒以内に返るか。
+          if [ -n "$MAIN" ]; then
+            printf '%s' "$META" > meta.json
+            curl -sS -X PUT "$API" -H "Authorization: Bearer $CF_TOKEN" \
+              -F "metadata=@meta.json;type=application/json" \
+              -F "$MAIN=@$FILE;type=application/javascript+module" "${EXTRA[@]}" > put.json
+            jq -e '.success' put.json > /dev/null || { jq '.errors' put.json; exit 1; }
+          else
+            (cd /tmp/wg/servers/commons-mcp && npm ci --silent && CLOUDFLARE_API_TOKEN="$CF_TOKEN" CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT" npx wrangler deploy)
+          fi
+          # 確かめる：URL を開いて、決まった返事（中継は discord-agents、コネクタは入口のページ）が30秒以内に返るか。
           # 返らなければ、置く前に動いていた版に戻して、失敗として知らせる
-          case "$NAME" in commons-discord-agents) EXPECT=discord-agents ;; *) EXPECT=ok ;; esac
+          case "$NAME" in commons-discord-agents) EXPECT=discord-agents ;; winegrowers-commons-mcp) EXPECT="Winegrowers Commons MCP" ;; *) EXPECT=ok ;; esac
           SUB=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain" -H "Authorization: Bearer $CF_TOKEN" | jq -r '.result.subdomain')
           ok=""
           for i in 1 2 3 4 5 6; do
             sleep 5
-            [ "$(curl -sS --max-time 10 "https://$NAME.$SUB.workers.dev/" || true)" = "$EXPECT" ] && { ok=1; break; }
+            curl -sS --max-time 10 "https://$NAME.$SUB.workers.dev/" 2>/dev/null | grep -qF "$EXPECT" && { ok=1; break; }
           done
           if [ -z "$ok" ]; then
             if [ -n "$PREV" ]; then
