@@ -8,7 +8,12 @@
     {
       "name": "core",
       "source": "./plugins/core",
-      "description": "基盤：基本ルール、人に確認する線引き、提案のしかた、提案の篩、人間向けの資料づくり、情報の構造の読み取り、図解、スキルの作り方（公式への上乗せ）"
+      "description": "基盤：基本ルール、人に確認する線引き、確かめ方、依頼や設計を疑う、長い手順を写してから入る、外の人への質問の作り方、提案のしかた、提案の篩、人間向けの資料づくり、情報の構造の読み取り、図解、スキルの作り方（公式への上乗せ）"
+    },
+    {
+      "name": "apparatus",
+      "source": "./plugins/apparatus",
+      "description": "Claude Code の装置を育てる：学びの行き先表と点検、コモンズへ返す・取り込む（growth-loop）、決定の記録の書き方（adr-authoring）、訂正を受け箱に積む hook、上限の無い待つループを止める hook"
     },
     {
       "name": "research",

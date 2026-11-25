@@ -1,0 +1,6 @@
+{
+  "name": "apparatus",
+  "displayName": "装置（Claude Code）",
+  "version": "0.1.1",
+  "description": "Claude Code の装置（CLAUDE.md・スキル・hook・サブエージェント・定期タスク・決定の記録・メモリ）を育てる仕組み。学びの行き先表と点検（growth-loop）、決定の記録の書き方（adr-authoring）、訂正を受け箱に積む hook、上限の無い待つループを止める hook"
+}

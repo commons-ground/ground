@@ -67,11 +67,17 @@ def frontmatter_name(skill_md):
     return nm.group(1).strip() if nm else None
 
 
+# Claude Code だけで使うプラグイン。Notion AI では動かないので、"all" でも写さない（名指しすれば写す）
+CODE_ONLY = {"apparatus"}
+
+
 def find_skills(commons, plugins):
     out = []
     for skill_md in sorted((commons / "plugins").glob("*/skills/*/SKILL.md")):
         plugin = skill_md.parts[-4]
         if plugins != ["all"] and plugin not in plugins:
+            continue
+        if plugins == ["all"] and plugin in CODE_ONLY:
             continue
         name = frontmatter_name(skill_md)
         if name:
