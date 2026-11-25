@@ -29,6 +29,7 @@
 //   変数    SIEVE                （任意）JSON {"channel": "提案", "repo": "commons-ground/winegrowers"}。
 //                                あれば篩の入り口を受け持つ。そのリポジトリにも Commons Agents アプリを入れておく。
 //                                channel は DISCORD_CHANNELS にも入れておく
+//   変数    HEALTH_CHANNEL       （任意）健康診断の知らせ先のチャンネル名。既定は「スキルの相談」
 //   変数    COMMONS_AI           （任意）JSON {"repo": "commons-ground/winegrowers", "user_id": "ボットのユーザーID"}。
 //                                あれば、コモンズのAI（ボット）へのメンションを拾い、/ai と同じ AI に答えさせる
 //                                （そのリポジトリに discord-mention の repository_dispatch を送る）。
@@ -58,6 +59,7 @@ export default {
     }
     if (!alive) ctx.waitUntil(poll(env));
     ctx.waitUntil(checkThinking(env).catch((e) => console.log(`thinking check: ${e.message}`)));
+    ctx.waitUntil(healthCheck(env).catch((e) => console.log(`health check: ${e.message}`)));
   },
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -65,6 +67,97 @@ export default {
     return new Response("discord-agents");
   },
 };
+
+// ── 健康診断（1日1回、朝8時以降の最初の見回りで） ──────────────────
+// Claude の定期実行を増やさずに、毎分の見回りに相乗りする。異常があったときだけ #スキルの相談 に知らせる。
+//   - 鍵の台帳（tools/health/keys.json、値は書かない）：期限まで14日を切った鍵
+//   - Discord の招待：あと3日で切れる、または残り回数が1以下（招待を読む権限が無ければ飛ばす）
+//   - 1日以上動きのない、下書きでないプルリクエスト（ground・winegrowers）
+//   - 見直し日を過ぎた試行（docs/trials.md の「試行中」の行）
+// 変数 HEALTH_CHANNEL（任意）で知らせる先のチャンネル名を変えられる
+const RAW = "https://raw.githubusercontent.com/commons-ground";
+const HEALTH_REPOS = ["commons-ground/ground", "commons-ground/winegrowers"];
+const DAY = 86400000;
+
+function jstNow() {
+  const d = new Date(Date.now() + 9 * 3600000);
+  return { date: d.toISOString().slice(0, 10), hour: d.getUTCHours() };
+}
+
+async function healthCheck(env) {
+  const { date, hour } = jstNow();
+  if (hour < 8 || (await env.STATE.get(`health:${date}`))) return;
+  await env.STATE.put(`health:${date}`, "1", { expirationTtl: 2 * 86400 });
+  const found = [];
+  const part = async (name, f) => {
+    try {
+      found.push(...(await f()));
+    } catch (e) {
+      console.log(`health ${name}: ${e.message}`);
+    }
+  };
+  await part("keys", () => checkKeys(date));
+  await part("invites", () => checkInvites(env));
+  await part("prs", () => checkPulls());
+  await part("trials", () => checkTrials(date));
+  if (!found.length) return;
+  const name = env.HEALTH_CHANNEL || "スキルの相談";
+  const ch = (await discord(env, "GET", `/guilds/${env.DISCORD_GUILD_ID}/channels`)).find((c) => c.type === 0 && c.name === name);
+  if (!ch) return console.log(`health: channel ${name} not found`);
+  const text = [`🩺 きょうの健康診断：気になるところが ${found.length} 件あったよ`, ...found.map((f) => `- ${f}`)].join("\n");
+  await discord(env, "POST", `/channels/${ch.id}/messages`, { content: text.slice(0, 1900), allowed_mentions: { parse: [] } });
+}
+
+const daysUntil = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / DAY);
+
+async function checkKeys(today) {
+  const res = await fetch(`${RAW}/ground/main/tools/health/keys.json`);
+  if (!res.ok) throw new Error(`keys.json ${res.status}`);
+  return (await res.json()).keys
+    .filter((k) => k.expires && daysUntil(today, k.expires) <= 14)
+    .map((k) => {
+      const d = daysUntil(today, k.expires);
+      return `🔑 ${k.name}（${k.where}）が${d < 0 ? `${-d}日前に切れてる` : d === 0 ? "きょう切れる" : `あと${d}日で切れる`}。${k.fix}`;
+    });
+}
+
+async function checkInvites(env) {
+  const list = await discord(env, "GET", `/guilds/${env.DISCORD_GUILD_ID}/invites`);
+  if (!Array.isArray(list)) return [];
+  const now = Date.now();
+  return list.flatMap((i) => {
+    const left = i.max_uses ? i.max_uses - i.uses : Infinity;
+    const end = i.max_age ? Date.parse(i.created_at) + i.max_age * 1000 : Infinity;
+    if (left > 1 && end - now > 3 * DAY) return [];
+    const why = left <= 1 ? `残り${left}回` : `あと${Math.max(0, Math.ceil((end - now) / DAY))}日`;
+    return [`📨 招待 discord.gg/${i.code} が ${why} で使えなくなる。新しい招待を作ってピン留めを差し替えてね`];
+  });
+}
+
+async function checkPulls() {
+  const out = [];
+  for (const repo of HEALTH_REPOS) {
+    const res = await fetch(`https://api.github.com/repos/${repo}/pulls?state=open&per_page=100`, {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "discord-agents" },
+    });
+    if (!res.ok) throw new Error(`${repo} pulls ${res.status}`);
+    for (const p of await res.json()) {
+      if (p.draft || Date.now() - Date.parse(p.updated_at) < DAY) continue;
+      out.push(`⏳ ${repo.split("/")[1]}#${p.number}「${p.title}」が1日以上止まってる → ${p.html_url}`);
+    }
+  }
+  return out;
+}
+
+async function checkTrials(today) {
+  const res = await fetch(`${RAW}/ground/main/docs/trials.md`);
+  if (!res.ok) throw new Error(`trials.md ${res.status}`);
+  const late = (await res.text())
+    .split("\n")
+    .map((l) => l.split("|").map((c) => c.trim()))
+    .filter((c) => c.length >= 8 && c[6] && c[6].includes("試行中") && /^\d{4}-\d{2}-\d{2}$/.test(c[5]) && c[5] < today);
+  return late.length ? [`🧪 見直し日を過ぎた試行が ${late.length} 件（例：${late[0][2]}）→ https://github.com/commons-ground/ground/blob/main/docs/trials.md`] : [];
+}
 
 // ほかの Worker（Discord のコマンドの受け口 tools/discord-ai-member/worker.js）から、
 // サービスバインディングで呼ぶ入口。外の URL からは呼べない。
