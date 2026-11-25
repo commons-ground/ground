@@ -128,7 +128,7 @@ async function poll(env) {
         await dispatchSieve(env, sieve, ch, m);
       }
       if (commonsAi?.repo && mentionsCommonsAi(m, commonsAi) && !(sieve?.repo && ch.name === sieve.channel)) {
-        if (await underLimit(env, "commons-ai")) await dispatchCommonsAi(env, commonsAi, ch, m);
+        await askCommonsAi(env, commonsAi, ch, m);
       }
       const hop = Number((await env.STATE.get(`hop:${m.id}`)) || 0);
       const from = await env.STATE.get(`by:${m.id}`); // 分身の返事なら、その分身のロールID
@@ -143,6 +143,30 @@ async function poll(env) {
       }
     }
     await env.STATE.put(key, msgs[msgs.length - 1].id);
+  }
+  if (commonsAi?.repo) await pollEdits(env, commonsAi, sieve);
+}
+
+// コモンズのAIに1回だけ頼む（同じ発言で2回動かない）
+async function askCommonsAi(env, ai, ch, m) {
+  if (await env.STATE.get(`ai:${m.id}`)) return;
+  if (!(await underLimit(env, "commons-ai"))) return;
+  await env.STATE.put(`ai:${m.id}`, "1", { expirationTtl: 86400 });
+  await dispatchCommonsAi(env, ai, ch, m);
+}
+
+// 投稿したあとの編集でメンションを足した発言も拾う。
+// 新しい発言だけを見る見回りでは取りこぼすので、各チャンネルの最近の発言のうち、
+// 直近10分に編集されたものだけを見直す（読むだけ。KV に書くのは、実際に頼んだときだけ）
+async function pollEdits(env, ai, sieve) {
+  const since = Date.now() - 10 * 60 * 1000;
+  for (const ch of await watchedChannels(env)) {
+    if (sieve?.repo && ch.name === sieve.channel) continue;
+    const recent = await discord(env, "GET", `/channels/${ch.id}/messages?limit=10`).catch(() => []);
+    for (const m of recent) {
+      if (!m.edited_timestamp || Date.parse(m.edited_timestamp) < since) continue;
+      if (mentionsCommonsAi(m, ai)) await askCommonsAi(env, ai, ch, m);
+    }
   }
 }
 
