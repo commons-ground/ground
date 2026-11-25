@@ -5,7 +5,8 @@
 // Claude のサブスク（公式の Claude Code GitHub Action）で動き、答えを /reply に返す。
 // 中継は分身の鍵も、その人の事業データも持たない。
 //
-// Discord はふつうの発言を外に知らせないので、1分おきに（Cloudflare の Cron トリガー）見に行く。
+// Discord はふつうの発言を Webhook で知らせないので、Gateway に常時つなぐ（Durable Object「Gateway」）。
+// 1分おきの見回り（Cron トリガー）は、常時接続を起こし直す番と、切れていた間の取りこぼしを拾う予備。
 //
 // ついでに、篩（tools/sieve）の入り口も受け持つ。提案のチャンネル（#提案）に人が直接書いた発言と、
 // 通話の議事録から出た〔提案〕を見つけたら、コモンズのリポジトリに repository_dispatch（sieve-intake）で知らせる。
@@ -23,7 +24,8 @@
 // 各自は、自分のリポジトリにコモンズの GitHub アプリを入れるだけでよい（トークンや合言葉を渡さない）。
 // 中継はアプリとしてそのリポジトリに dispatch し、返事は GitHub Actions の身分証明（OIDC）で
 // 「そのリポジトリの、ground の discord-agent.yml から来たか」を確かめてから投稿する。
-//   KV      STATE                どこまで見たか、発言ごとの往復回数
+//   KV      STATE                どこまで見たか、発言ごとの往復回数、頼んだ印
+//   Durable Object GATEWAY       常時接続の係（クラス Gateway）
 //   変数    SIEVE                （任意）JSON {"channel": "提案", "repo": "commons-ground/winegrowers"}。
 //                                あれば篩の入り口を受け持つ。そのリポジトリにも Commons Agents アプリを入れておく。
 //                                channel は DISCORD_CHANNELS にも入れておく
@@ -37,7 +39,7 @@
 //   - AI どうしの往復は MAX_HOPS 回まで。自分のロールに自分で答えることはしない
 //   - 1つの分身が1時間に動くのは MAX_PER_HOUR 回まで
 
-import { WorkerEntrypoint } from "cloudflare:workers";
+import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 
 const API = "https://discord.com/api/v10";
 const MAX_HOPS = 3;
@@ -45,7 +47,16 @@ const MAX_PER_HOUR = 20;
 
 export default {
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(poll(env));
+    // 常時接続（Gateway）が生きていれば、発言はそちらで即座に拾っている。見回りは、切れていたときの取りこぼしを拾う予備
+    let alive = false;
+    if (env.GATEWAY) {
+      try {
+        alive = (await env.GATEWAY.get(env.GATEWAY.idFromName("discord")).ensure()).alive;
+      } catch (e) {
+        console.log(`gateway ensure: ${e.message}`);
+      }
+    }
+    if (!alive) ctx.waitUntil(poll(env));
   },
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -74,6 +85,118 @@ export class Dispatcher extends WorkerEntrypoint {
     });
     console.log(`dispatch via binding ${payload?.event_type}: ${res.status}`);
     return { ok: res.ok, status: res.status };
+  }
+}
+
+// ── 常時接続（Discord Gateway） ──────────────────────────────
+// Discord はふつうの発言を Webhook で知らせないので、発言を即座に知るには Gateway に常時つなぐしかない。
+// Durable Object は、外向きの WebSocket がつながっている間は止められない（Cloudflare、2026年6月から）。
+// 1つ（128MB）を1日つなぎっぱなしにして約 10,800 GB-s で、無料枠（13,000 GB-s/日）に収まる。
+// 切れたら毎分の見回りが ensure() で起こし直し、その間の取りこぼしは見回りが拾う。
+const GATEWAY_URL = "https://gateway.discord.gg/?v=10&encoding=json";
+const INTENTS = (1 << 0) | (1 << 9) | (1 << 15); // GUILDS, GUILD_MESSAGES, MESSAGE_CONTENT
+
+export class Gateway extends DurableObject {
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.ws = null;
+    this.seq = null;
+    this.session = null;
+    this.resumeUrl = null;
+    this.beat = null;
+    this.lastAck = 0;
+    this.channels = new Map();
+    this.channelsAt = 0;
+  }
+
+  // 毎分の見回りから呼ばれる。つながっていなければつなぐ。生きていれば alive: true
+  async ensure() {
+    const fresh = this.ws && Date.now() - this.lastAck < 3 * 60 * 1000;
+    if (!fresh) await this.connect();
+    return { alive: Boolean(fresh) };
+  }
+
+  async connect() {
+    try {
+      this.ws?.close();
+    } catch {}
+    clearInterval(this.beat);
+    const url = (this.session && this.resumeUrl ? this.resumeUrl + "/?v=10&encoding=json" : GATEWAY_URL).replace("wss://", "https://");
+    const res = await fetch(url, { headers: { Upgrade: "websocket" } });
+    const ws = res.webSocket;
+    if (!ws) throw new Error(`gateway: ${res.status}`);
+    ws.accept();
+    this.ws = ws;
+    this.lastAck = Date.now();
+    ws.addEventListener("message", (e) => this.ctx.waitUntil(this.onMessage(e.data).catch((err) => console.log(`gateway msg: ${err.message}`))));
+    ws.addEventListener("close", (e) => {
+      console.log(`gateway closed: ${e.code}`);
+      clearInterval(this.beat);
+      if (this.ws === ws) this.ws = null;
+      // 4004（鍵が違う）・4014（権限が足りない）などは、つなぎ直しても同じなので見回りに任せる
+      if (e.code < 4000 || [4000, 4007, 4009].includes(e.code)) {
+        if (e.code === 4007 || e.code === 4009) this.session = null;
+        this.ctx.waitUntil(new Promise((r) => setTimeout(r, 3000)).then(() => this.connect()).catch(() => {}));
+      }
+    });
+  }
+
+  send(op, d) {
+    this.ws?.send(JSON.stringify({ op, d }));
+  }
+
+  async onMessage(raw) {
+    const p = JSON.parse(raw);
+    if (p.s != null) this.seq = p.s;
+    if (p.op === 10) {
+      // Hello：心拍を始め、名乗る（つなぎ直しなら続きから）
+      clearInterval(this.beat);
+      this.beat = setInterval(() => this.send(1, this.seq), p.d.heartbeat_interval);
+      if (this.session) this.send(6, { token: this.env.DISCORD_BOT_TOKEN, session_id: this.session, seq: this.seq });
+      else this.send(2, { token: this.env.DISCORD_BOT_TOKEN, intents: INTENTS, properties: { os: "cloudflare", browser: "commons", device: "commons" } });
+    } else if (p.op === 11) {
+      this.lastAck = Date.now();
+    } else if (p.op === 1) {
+      this.send(1, this.seq);
+    } else if (p.op === 7) {
+      this.ws?.close(4000, "reconnect");
+    } else if (p.op === 9) {
+      this.session = p.d ? this.session : null;
+      this.ws?.close(4000, "invalid session");
+    } else if (p.op === 0) {
+      if (p.t === "READY") {
+        this.session = p.d.session_id;
+        this.resumeUrl = p.d.resume_gateway_url;
+        this.lastAck = Date.now();
+      } else if (p.t === "MESSAGE_CREATE" || p.t === "MESSAGE_UPDATE") {
+        await this.onDiscordMessage(p.t, p.d);
+      }
+    }
+  }
+
+  async channel(id) {
+    if (Date.now() - this.channelsAt > 5 * 60 * 1000 || !this.channels.has(id)) {
+      this.channels = new Map((await watchedChannels(this.env)).map((c) => [c.id, c]));
+      this.channelsAt = Date.now();
+    }
+    return this.channels.get(id);
+  }
+
+  async onDiscordMessage(type, m) {
+    if (this.env.DISCORD_GUILD_ID && m.guild_id && m.guild_id !== this.env.DISCORD_GUILD_ID) return;
+    const ch = await this.channel(m.channel_id);
+    if (!ch) return; // 見ていないチャンネル
+    if (type === "MESSAGE_CREATE") {
+      await handleMessage(this.env, ch, m);
+      await this.env.STATE.put(`last:${ch.id}`, m.id); // 見回りが同じ発言を見直さないように
+    } else {
+      // 編集：コモンズのAIへのメンションを足したときだけ拾う（MESSAGE_UPDATE は本文が来ないこともある）
+      const ai = json(this.env.COMMONS_AI, null);
+      const sieve = json(this.env.SIEVE, null);
+      if (ai?.repo && m.content !== undefined && m.author && mentionsCommonsAi(m, ai) && !(sieve?.repo && ch.name === sieve.channel)) {
+        await askCommonsAi(this.env, ai, ch, m);
+      }
+    }
   }
 }
 
@@ -130,28 +253,44 @@ async function poll(env) {
     const msgs = await discord(env, "GET", `/channels/${ch.id}/messages?after=${last}&limit=50`);
     if (!msgs.length) continue;
     msgs.sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
-    for (const m of msgs) {
-      if (sieve?.repo && ch.name === sieve.channel && isProposal(m)) {
-        await dispatchSieve(env, sieve, ch, m);
-      }
-      if (commonsAi?.repo && mentionsCommonsAi(m, commonsAi) && !(sieve?.repo && ch.name === sieve.channel)) {
-        await askCommonsAi(env, commonsAi, ch, m);
-      }
-      const hop = Number((await env.STATE.get(`hop:${m.id}`)) || 0);
-      const from = await env.STATE.get(`by:${m.id}`); // 分身の返事なら、その分身のロールID
-      // 本文の <@&ID> も見る（コネクタやボットの投稿は通知を切っているので mention_roles が空になる）
-      const mentioned = new Set([...(m.mention_roles || []), ...[...(m.content || "").matchAll(/<@&(\d+)>/g)].map((x) => x[1])]);
-      for (const roleId of mentioned) {
-        const agent = agents[roleId];
-        if (!agent || roleId === from) continue;
-        if (hop >= MAX_HOPS) continue;
-        if (!(await underLimit(env, roleId))) continue;
-        await dispatch(env, roleId, agent, ch, m, hop, agents);
-      }
-    }
+    for (const m of msgs) await handleMessage(env, ch, m);
     await env.STATE.put(key, msgs[msgs.length - 1].id);
   }
   if (commonsAi?.repo) await pollEdits(env, commonsAi, sieve);
+}
+
+// 1件の発言を見て、篩・コモンズのAI・分身に知らせる。
+// 毎分の見回りと、常時接続（Gateway）の両方から呼ばれるので、同じ発言で同じ相手を2回起こさないよう、
+// 頼んだら KV に印を残す（once）
+async function handleMessage(env, ch, m) {
+  const agents = json(env.AGENTS, {});
+  const sieve = json(env.SIEVE, null);
+  const commonsAi = json(env.COMMONS_AI, null);
+  if (sieve?.repo && ch.name === sieve.channel && isProposal(m) && (await once(env, `sv:${m.id}`))) {
+    await dispatchSieve(env, sieve, ch, m);
+  }
+  if (commonsAi?.repo && mentionsCommonsAi(m, commonsAi) && !(sieve?.repo && ch.name === sieve.channel)) {
+    await askCommonsAi(env, commonsAi, ch, m);
+  }
+  const hop = Number((await env.STATE.get(`hop:${m.id}`)) || 0);
+  const from = await env.STATE.get(`by:${m.id}`); // 分身の返事なら、その分身のロールID
+  // 本文の <@&ID> も見る（コネクタやボットの投稿は通知を切っているので mention_roles が空になる）
+  const mentioned = new Set([...(m.mention_roles || []), ...[...(m.content || "").matchAll(/<@&(\d+)>/g)].map((x) => x[1])]);
+  for (const roleId of mentioned) {
+    const agent = agents[roleId];
+    if (!agent || roleId === from) continue;
+    if (hop >= MAX_HOPS) continue;
+    if (!(await underLimit(env, roleId))) continue;
+    if (!(await once(env, `ag:${roleId}:${m.id}`))) continue;
+    await dispatch(env, roleId, agent, ch, m, hop, agents);
+  }
+}
+
+// 初めてなら印を付けて true。すでに印があれば false
+async function once(env, key) {
+  if (await env.STATE.get(key)) return false;
+  await env.STATE.put(key, "1", { expirationTtl: 86400 });
+  return true;
 }
 
 // コモンズのAIに1回だけ頼む（同じ発言で2回動かない）

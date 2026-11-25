@@ -44,7 +44,14 @@ jobs:
           case "$TARGET" in
             discord-agents*)
               NAME=commons-discord-agents; FILE=tools/discord-agents/router.js; MAIN=router.js
-              META='{"main_module":"router.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text","kv_namespace"]}'
+              # 常時接続の係（Durable Object「Gateway」）。初めて置くときだけ、クラスを作る移行（migrations）を付ける
+              HAS_DO=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/$NAME/settings" -H "Authorization: Bearer $CF_TOKEN" \
+                | jq '[.result.bindings[]? | select(.type == "durable_object_namespace" and .name == "GATEWAY")] | length')
+              if [ "$HAS_DO" = "0" ]; then
+                META='{"main_module":"router.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text","kv_namespace"],"bindings":[{"type":"durable_object_namespace","name":"GATEWAY","class_name":"Gateway"}],"migrations":{"new_tag":"v1","new_sqlite_classes":["Gateway"]}}'
+              else
+                META='{"main_module":"router.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text","kv_namespace","durable_object_namespace"]}'
+              fi
               ;;
             discord-hook*)
               # 受け口は、中継の入口 Dispatcher をサービスバインディング ROUTER で呼ぶ（期限つきのトークンを持たない）
