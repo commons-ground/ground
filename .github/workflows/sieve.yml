@@ -97,6 +97,12 @@ jobs:
             git clone -q --depth 1 https://github.com/commons-ground/ground .sieve/ground
             CROSS=true
           fi
+          # コミットする名前（写しにも。無いとコミットできず、篩が自分で設定しようとしてはじかれる）
+          for d in . .sieve/ground; do
+            [ -d "$d/.git" ] || continue
+            git -C "$d" config user.name "commons-sieve[bot]"
+            git -C "$d" config user.email "commons-sieve[bot]@users.noreply.github.com"
+          done
           jq -n --argjson on "$CROSS" '{ground_copy: (if $on then ".sieve/ground" else null end), can_write_other_repos: $on}' > .sieve/cross.json
           # 出来事を、篩に要る項目だけにして渡す（合鍵は渡さない）
           case "$EVENT_NAME" in
@@ -130,6 +136,8 @@ jobs:
             GIT="Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git fetch:*),Bash(git checkout:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git revert:*)"
             # ground の写し（.sieve/ground）でも、同じ手元の操作だけ
             for c in status diff log show fetch checkout switch add commit rev-parse branch revert; do GIT="$GIT,Bash(git -C .sieve/ground $c:*)"; done
+            # 読むだけのよく使うコマンド（cd・ls・head・tail・grep・wc）。書く道具は増やさない
+            GIT="$GIT,Bash(cd:*),Bash(ls:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(wc:*)"
             echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $G/tools/sieve/agent.md --allowedTools \"$GHR,$GIT,Bash(python3 $G/tools/sieve/safe.py:*),Read,Write,Edit,Glob,Grep\""
             echo "marketplaces<<EOF"; printf '%s' "$MK"; echo "EOF"
             echo "plugins<<EOF"; printf '%s' "$PL"; echo "EOF"
