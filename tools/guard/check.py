@@ -1,10 +1,13 @@
 """プルリクエストの差分を機械で点検する（門番）。
 
-人に「とりあえず確認」を回さない代わりに、危ない変更を機械で止める。
-- 止める（BLOCK）：鍵の書き込み、スクリプトの注入、外から落としたものをそのまま実行、など。直すまで入らない
-- 人に回す（HUMAN）：人にしか決められないこと。鍵・権限を足す、お金の上限を上げる、
-  安全の仕組み（この門番と自動マージ）を変える、基本ルール（コモンズの価値観）を変える、大きく消す
-- それ以外は、validate が通れば自動で入る。おかしければ「取り下げ」で戻す
+人に「とりあえず確認」を回さない。人に回すのは、人の判断そのものが要るものだけ。
+- 止める（BLOCK）：鍵の書き込み、スクリプトの注入、外から落としたものをそのまま実行、
+  外の人のコードが鍵つきで動く `pull_request_target`。直すまで入らない
+- 人に回す（HUMAN）：お金・回数の上限を上げる（お金の判断）、門番と自動マージを変える
+  （AI が自分の見張り役を弱められないように）、基本ルールを変える（コモンズの考え方の判断）
+- 書き残すだけ（NOTE）：新しい鍵を使い始める（判断は鍵を作るときに人がしている。無ければ動かないだけ）、
+  書き込み権限を足す、大きく消す（どれも戻せる）。点検の結果に残し、通す
+- それ以外は、validate が通れば自動で入る。おかしければ「取り下げて」で戻す
 
 使い方：python check.py pr.diff  → 結果を JSON で標準出力に出す
 """
@@ -60,7 +63,7 @@ def parse(diff: str):
 
 
 def check(diff: str) -> dict:
-    block, human = [], []
+    block, human, note = [], [], []
     files = parse(diff)
     deleted = 0
     for path, ch in files.items():
@@ -77,12 +80,12 @@ def check(diff: str) -> dict:
                 if INJECTION.search(line):
                     block.append(f"`{path}`：Issue やコメントの本文を workflow の式に直接入れている（中身で命令を書き込まれる）。env に入れてから使う")
                 if WRITE_PERM.match(line):
-                    human.append(f"`{path}`：書き込みの権限を足している（`{line.strip()}`）")
+                    note.append(f"`{path}`：書き込みの権限を足している（`{line.strip()}`）")
                 if "pull_request_target" in line and not SAFETY_FILES.match(path):
-                    human.append(f"`{path}`：`pull_request_target` を使い始めている（外の人の PR でも鍵つきで動く）")
+                    block.append(f"`{path}`：`pull_request_target` を使い始めている（外の人の PR でも鍵つきで動く）。門番のほかでは使わない")
                 for s in re.findall(r"secrets\.([A-Z0-9_]+)", line):
                     if s not in KNOWN_SECRETS:
-                        human.append(f"`{path}`：新しい鍵 `{s}` を使い始めている（人が鍵を用意する）")
+                        note.append(f"`{path}`：新しい鍵 `{s}` を使い始めている（鍵は人が作ったときに判断済み。無ければ動かないだけ）")
         for line in ch["add"]:
             m = MONEY.search(line)
             if m:
@@ -95,9 +98,9 @@ def check(diff: str) -> dict:
         if VALUES_FILES.match(path or ""):
             human.append(f"`{path}`：基本ルール（コモンズの考え方）を変えている")
     if deleted > BIG_DELETE:
-        human.append(f"全体で {deleted} 行を消している（大きく消すときは人が確かめる）")
+        note.append(f"全体で {deleted} 行を消している")
     dedup = lambda xs: list(dict.fromkeys(xs))
-    return {"block": dedup(block), "human": dedup(human), "files": len(files)}
+    return {"block": dedup(block), "human": dedup(human), "note": dedup(note), "files": len(files)}
 
 
 if __name__ == "__main__":
