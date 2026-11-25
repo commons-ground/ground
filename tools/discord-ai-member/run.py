@@ -64,6 +64,12 @@ def post_answer(p: dict, text: str) -> None:
     if not p.get("token"):
         # メンションから来たとき（中継の discord-mention）。合鍵が無いので、ボットの鍵で返信する
         h = {"Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}"}
+        # 中継が先に「考え中…」を返信していれば、それを答えに書き換える
+        if p.get("reply_id"):
+            r = requests.patch(f"{API}/channels/{p['channel_id']}/messages/{p['reply_id']}", headers=h,
+                               json={"content": chunks[0], "allowed_mentions": no_ping}, timeout=30)
+            if r.ok:
+                chunks = chunks[1:]
         for i, c in enumerate(chunks):
             body = {"content": c, "allowed_mentions": no_ping}
             if i == 0 and p.get("message_id"):
