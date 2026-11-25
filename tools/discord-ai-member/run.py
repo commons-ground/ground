@@ -131,6 +131,8 @@ def build_system_prompt(member_md: str, user_name: str, memory_md: str = "") -> 
 - 分からないことは推測で埋めない。調べて分からなければ、そう書く
 - ここは複数の事業者が集まる場所。ほかの事業者の事業データ（人名、金額、口座、住所、取引先）は書かない
 - 最後の出力が、そのまま返事として投稿される
+- コモンズの GitHub（commons-ground/ground・winegrowers）の Issue・プルリクエスト・実行の記録は、`gh issue view 番号 -R commons-ground/ground` のように読める（読むだけ。書くコマンドは使えない）
+- スキルや仕組みを「直して」「こうしたい」と頼まれたら、何をどう直すか・なぜかを1〜3行で、返事の最後に「〔提案〕（1行）」として書く。この行は #提案 に回り、篩がプルリクエストにして、門番の点検を通れば入る（おかしければ「取り下げて」で戻る）。自分で直したとは書かない
 - 次の自分（GitHub の自分も含む）が知っておくべきこと（人に直されたこと、コモンズで決まったこと、次から気をつけること）が出たら、返事の最後に「〔覚えておく〕（1行）」と書く。この行は Discord には出ず、裏で「覚えておく候補」に入り、人が確かめてから覚えていることに入る。その場かぎりの話、事業データ、推測、「見つからなかった・できなかった」という自分の限界は書かない"""
     memory = f"\n\n{memory_md}" if memory_md.strip() else ""
     return member_md + memory + person + rules
@@ -151,9 +153,9 @@ async def run_agent(prompt: str, system_prompt: str, config: dict, plugins: list
         model=config.get("model", "claude-sonnet-5-5"),
         plugins=plugins,
         skills="all",
-        allowed_tools=["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"],
+        allowed_tools=["Read", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite", *GH_READ],
         disallowed_tools=["Edit", "Write", "NotebookEdit"],
-        # allowed_tools に無い道具（Bash など）は聞かずに断る。
+        # allowed_tools に無い道具（Bash など）は聞かずに断る。GitHub は読むコマンドだけ（GH_READ）。
         # 環境変数に鍵があるので、メッセージに紛れた指示でシェルを叩かれないようにする
         permission_mode="dontAsk",
         max_turns=config.get("max_turns", 30),
@@ -238,10 +240,52 @@ def main() -> int:
     answer, info = asyncio.run(run_agent(prompt, system_prompt, config, plugins, work))
     write_summary(info, config, origins)
     answer = keep_memory_quietly(answer, p)
+    answer = hand_to_sieve(answer, p)
     # 何への答えかが見えるように、質問を引用で添える（メンションは元の発言への返信になるので要らない）
     header = "" if p.get("command") == "mention" else f"> {question[:300]}\n\n"
     post_answer(p, header + (answer or FAIL_TEXT))
     return 0
+
+
+# GitHub を読むコマンドだけ許す（書くのは篩に任せる。Discord の発言から直接リポジトリを書き換えない）
+GH_READ = [f"Bash(gh {c}:*)" for c in (
+    "issue list", "issue view", "pr list", "pr view", "pr diff", "pr checks",
+    "search issues", "search prs", "search code", "run list", "run view", "release list",
+)]
+PROPOSAL_MARK = re.compile(r"^\s*[〔\[]提案[〕\]]\s*(.+)$")
+
+
+def hand_to_sieve(answer: str, p: dict) -> str:
+    """返事の「〔提案〕」の行を外し、#提案 に「拾った候補」として流す（中継が見つけて篩に渡す）。
+    返事には、回したことだけを1行で残す。"""
+    keep, props = [], []
+    for line in answer.splitlines():
+        m = PROPOSAL_MARK.match(line)
+        if m:
+            props.append(m.group(1).strip())
+        else:
+            keep.append(line)
+    if not props:
+        return answer
+    token, guild = os.environ.get("DISCORD_BOT_TOKEN", ""), p.get("guild_id", "")
+    posted = False
+    if token and guild:
+        h = {"Authorization": f"Bot {token}"}
+        try:
+            chans = requests.get(f"{API}/guilds/{guild}/channels", headers=h, timeout=30).json()
+            ch = next((c for c in chans if c.get("name") == os.environ.get("PROPOSAL_CHANNEL", "提案")), None)
+            if ch:
+                link = ""
+                if p.get("channel_id") and p.get("message_id"):
+                    link = f"\n元の発言：https://discord.com/channels/{guild}/{p['channel_id']}/{p['message_id']}"
+                body = "〔提案〕（コモンズのAIが会話から拾った候補）\n" + "\n".join(f"- {x}" for x in props) + link
+                requests.post(f"{API}/channels/{ch['id']}/messages", headers=h,
+                              json={"content": body[:1900], "allowed_mentions": {"parse": []}}, timeout=30).raise_for_status()
+                posted = True
+        except requests.RequestException as e:
+            print(f"提案を流せなかった: {type(e).__name__}")
+    note = "🧺 直す案を #提案 に回したよ。ふるいにかけてプルリクエストになるはず" if posted else "（直す案を #提案 に回せなかったので、`/propose` で出してね）"
+    return ("\n".join(keep).strip() + "\n\n" + note).strip()
 
 
 MEMORY_MARK = re.compile(r"^\s*[〔\[]覚えておく[〕\]]\s*(.+)$")

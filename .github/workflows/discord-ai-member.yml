@@ -50,6 +50,7 @@ jobs:
           MEMBER_DIR: ${{ github.workspace }}/self/${{ inputs.member_dir }}
           PLUGIN_ROOTS: ${{ github.workspace }}/self:${{ github.workspace }}/ground
           MEMORY_CANDIDATES: ${{ runner.temp }}/memory-candidates.md
+          GH_TOKEN: ${{ github.token }}  # gh で GitHub を読むため（書くコマンドは run.py で許していない）
         run: python ground/tools/discord-ai-member/run.py
       - name: 「覚えておく」を候補の Issue にためる（Discord には出さない）
         if: success()
