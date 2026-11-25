@@ -149,7 +149,10 @@ def main() -> int:
         if welcome:
             msg = do(f"#{WELCOME} に案内を書く", "POST", f"/channels/{welcome['id']}/messages",
                      {"content": WELCOME_TEXT, "allowed_mentions": {"parse": []}})
-            do("案内をピン留めする", "PUT", f"/channels/{welcome['id']}/pins/{msg['id']}")
+            try:
+                do("案内をピン留めする", "PUT", f"/channels/{welcome['id']}/pins/{msg['id']}")
+            except SystemExit as e:
+                print(f"ピン留めはできなかった（ボットに「メッセージのピン留め」の権限が無い）。人が留めればよい：{e}")
         else:
             print(f"やる予定：#{WELCOME} に案内を書いてピン留めする")
 
