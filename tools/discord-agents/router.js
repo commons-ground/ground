@@ -95,6 +95,13 @@ async function discord(env, method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
+// 「読んだよ」の印（👀）を、AI に頼めた発言に付ける。返事はそのあと1〜2分で付く
+async function seen(env, ch, m) {
+  await discord(env, "PUT", `/channels/${ch.id}/messages/${m.id}/reactions/${encodeURIComponent("👀")}/@me`).catch((e) =>
+    console.log(`reaction: ${e.message}`),
+  );
+}
+
 async function watchedChannels(env) {
   const names = new Set((env.DISCORD_CHANNELS || "").split(",").map((s) => s.trim()).filter(Boolean));
   const list = await discord(env, "GET", `/guilds/${env.DISCORD_GUILD_ID}/channels`);
@@ -246,6 +253,7 @@ async function dispatchCommonsAi(env, ai, ch, m) {
     }),
   });
   console.log(`dispatch commons-ai: ${res.status}`);
+  if (res.ok) await seen(env, ch, m);
 }
 
 async function underLimit(env, roleId) {
@@ -299,6 +307,7 @@ async function dispatch(env, roleId, agent, ch, m, hop, agents) {
     body: JSON.stringify(payload),
   });
   console.log(`dispatch ${agent.name}: ${res.status}`);
+  if (res.ok) await seen(env, ch, m);
 }
 
 async function reply(request, env) {

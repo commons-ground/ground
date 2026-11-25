@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: read
+  issues: write  # 「覚えておく候補」の Issue にためるため
 
 jobs:
   reply:
@@ -48,7 +49,25 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           MEMBER_DIR: ${{ github.workspace }}/self/${{ inputs.member_dir }}
           PLUGIN_ROOTS: ${{ github.workspace }}/self:${{ github.workspace }}/ground
+          MEMORY_CANDIDATES: ${{ runner.temp }}/memory-candidates.md
         run: python ground/tools/discord-ai-member/run.py
+      - name: 「覚えておく」を候補の Issue にためる（Discord には出さない）
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          FILE: ${{ runner.temp }}/memory-candidates.md
+        run: |
+          [ -s "$FILE" ] || exit 0
+          gh label create "覚えておく候補" -R "$REPO" --color C5DEF5 --description "AI が覚えたいこと。人が確かめて memory.md に入れる" 2>/dev/null || true
+          N=$(gh issue list -R "$REPO" --label "覚えておく候補" --state open --json number -q '.[0].number')
+          if [ -z "$N" ]; then
+            gh issue create -R "$REPO" --label "覚えておく候補" --title "🧠 覚えておく候補" \
+              --body "コモンズのAIが、やりとりから「次から覚えておきたい」と思ったことがここにたまる。core:harvest で拾い、人が確かめてから discord/memory.md に入れる。入れ終わったら閉じてよい（次の候補で新しく開く）。" > /dev/null
+            N=$(gh issue list -R "$REPO" --label "覚えておく候補" --state open --json number -q '.[0].number')
+          fi
+          gh issue comment "$N" -R "$REPO" --body-file "$FILE" > /dev/null
+          echo "覚えておく候補を #$N に足した"
       - name: 失敗したら「考え中…」を直す
         if: failure() || cancelled()
         env:
