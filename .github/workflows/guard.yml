@@ -1,6 +1,7 @@
 # 門番：プルリクエストの差分を機械で点検する（tools/guard/check.py）。
 # - 危ない変更は止める（このチェックが失敗し、直すまで main に入らない）
-# - 人にしか決められない変更だけ、理由を書いて人に回す。人がラベル「確認済み」を付けると通る
+# - 人の判断そのものが要る変更（お金の上限、門番・自動マージ、基本ルール）だけ、理由を書いて人に回す。人がラベル「確認済み」を付けると通る
+# - 新しい鍵・書き込み権限・大きな削除は、結果に書き残して通す（判断は鍵を作るときに済んでいる／戻せる）
 # - それ以外は通す。validate と一緒に通れば自動でマージされる
 #
 # pull_request_target で動くので、点検に使うのはいつも main（土台）側のこの workflow と check.py。
@@ -43,6 +44,7 @@ jobs:
             echo "### 門番の点検"
             [ -n "$BLOCK" ] && { echo "**止めた（直すまで入らない）**"; jq -r '.block[] | "- " + .' result.json; }
             [ -n "$HUMAN" ] && { echo "**人に回した**"; jq -r '.human[] | "- " + .' result.json; }
+            [ -n "$(jq -r '.note[]' result.json)" ] && { echo "**書き残し（通す）**"; jq -r '.note[] | "- " + .' result.json; }
             [ -z "$BLOCK$HUMAN" ] && echo "問題なし。validate が通れば自動で入る"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ -n "$BLOCK" ]; then
