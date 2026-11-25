@@ -57,6 +57,7 @@ export default {
       }
     }
     if (!alive) ctx.waitUntil(poll(env));
+    ctx.waitUntil(checkThinking(env).catch((e) => console.log(`thinking check: ${e.message}`)));
   },
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -191,7 +192,7 @@ export class Gateway extends DurableObject {
       await this.env.STATE.put(`last:${ch.id}`, m.id); // 見回りが同じ発言を見直さないように
     } else {
       // 編集：コモンズのAIへのメンションを足したときだけ拾う（MESSAGE_UPDATE は本文が来ないこともある）
-      const ai = json(this.env.COMMONS_AI, null);
+      const ai = await withBotRoles(this.env, json(this.env.COMMONS_AI, null));
       const sieve = json(this.env.SIEVE, null);
       if (ai?.repo && m.content !== undefined && m.author && mentionsCommonsAi(m, ai) && !(sieve?.repo && ch.name === sieve.channel)) {
         await askCommonsAi(this.env, ai, ch, m);
@@ -256,7 +257,7 @@ async function poll(env) {
     for (const m of msgs) await handleMessage(env, ch, m);
     await env.STATE.put(key, msgs[msgs.length - 1].id);
   }
-  if (commonsAi?.repo) await pollEdits(env, commonsAi, sieve);
+  if (commonsAi?.repo) await pollEdits(env, await withBotRoles(env, commonsAi), sieve);
 }
 
 // 1件の発言を見て、篩・コモンズのAI・分身に知らせる。
@@ -265,7 +266,7 @@ async function poll(env) {
 async function handleMessage(env, ch, m) {
   const agents = json(env.AGENTS, {});
   const sieve = json(env.SIEVE, null);
-  const commonsAi = json(env.COMMONS_AI, null);
+  const commonsAi = await withBotRoles(env, json(env.COMMONS_AI, null));
   if (sieve?.repo && ch.name === sieve.channel && isProposal(m) && (await once(env, `sv:${m.id}`))) {
     await dispatchSieve(env, sieve, ch, m);
   }
@@ -356,7 +357,22 @@ async function dispatchSieve(env, sieve, ch, m) {
 function mentionsCommonsAi(m, ai) {
   if (m.author?.bot || ![0, 19].includes(m.type)) return false;
   const id = String(ai.user_id || "");
-  return Boolean(id) && ((m.mentions || []).some((u) => u.id === id) || (m.content || "").includes(`<@${id}>`) || (m.content || "").includes(`<@!${id}>`));
+  if (!id) return false;
+  const content = m.content || "";
+  if ((m.mentions || []).some((u) => u.id === id) || content.includes(`<@${id}>`) || content.includes(`<@!${id}>`)) return true;
+  // Discord の候補で、ボットのユーザーではなく、ボットに付くロール（同じ名前）を選んだとき
+  return (ai.roles || []).some((r) => (m.mention_roles || []).includes(r) || content.includes(`<@&${r}>`));
+}
+
+// ボットに付くロール（Discord がボットに自動で作る、ボットと同じ名前のロール）の ID。Worker が動いている間は覚えておく
+let botRoles = null;
+async function withBotRoles(env, ai) {
+  if (!ai?.user_id) return ai;
+  if (!botRoles) {
+    const roles = await discord(env, "GET", `/guilds/${env.DISCORD_GUILD_ID}/roles`).catch(() => []);
+    botRoles = roles.filter((r) => r.tags?.bot_id === String(ai.user_id)).map((r) => r.id);
+  }
+  return { ...ai, roles: botRoles };
 }
 
 async function dispatchCommonsAi(env, ai, ch, m) {
@@ -367,9 +383,19 @@ async function dispatchCommonsAi(env, ai, ch, m) {
   if (!token) return;
   const question = (m.content || "")
     .replace(new RegExp(`<@!?${ai.user_id}>`, "g"), "")
+    .replace(new RegExp(`<@&(${(ai.roles || ["-"]).join("|")})>`, "g"), "")
     .replace(/<@!?(\d+)>/g, "@メンバー")
     .replace(/<@&(\d+)>/g, "@ロール")
     .trim();
+  // 👀 のあと答えまで何も出ないと不安なので、先に「考え中…」を返信しておき、答えはそれを書き換える
+  const thinking = await discord(env, "POST", `/channels/${ch.id}/messages`, {
+    content: THINKING_TEXT,
+    message_reference: { message_id: m.id, fail_if_not_exists: false },
+    allowed_mentions: { parse: [] },
+  }).catch((e) => {
+    console.log(`thinking: ${e.message}`);
+    return null;
+  });
   const res = await fetch(`https://api.github.com/repos/${ai.repo}/dispatches`, {
     method: "POST",
     headers: {
@@ -386,13 +412,47 @@ async function dispatchCommonsAi(env, ai, ch, m) {
         channel_id: ch.id,
         guild_id: env.DISCORD_GUILD_ID,
         message_id: m.id,
+        reply_id: thinking?.id || "",
         user_id: m.author?.id || "",
         user_name: m.member?.nick || m.author?.global_name || m.author?.username || "",
       },
     }),
   });
   console.log(`dispatch commons-ai: ${res.status}`);
-  if (res.ok) await seen(env, ch, m);
+  if (res.ok) {
+    await seen(env, ch, m);
+    if (thinking?.id) await watchThinking(env, ch.id, thinking.id);
+  } else if (thinking?.id) {
+    await discord(env, "PATCH", `/channels/${ch.id}/messages/${thinking.id}`, { content: STUCK_TEXT }).catch(() => {});
+  }
+}
+
+const THINKING_TEXT = "🤔 考え中…（1〜2分で、ここに答えが出るよ）";
+const STUCK_TEXT = "😵 ごめん、うまく動かなかったみたい…もう一度呼んでみて。続くようなら #提案 で教えてね";
+
+// 「考え中…」のまま12分たったら、動かなかったとみなして書き換える（AI の仕事が起動の時点で落ちたときなど）。
+// 毎分の見回りのついでに見る。覚えておく先は KV のキー1つ（一覧の読み出しを毎分しないため）
+async function watchThinking(env, channelId, id) {
+  const list = json(await env.STATE.get("thinking"), []);
+  list.push({ c: channelId, id, at: Date.now() });
+  await env.STATE.put("thinking", JSON.stringify(list.slice(-50)));
+}
+
+async function checkThinking(env) {
+  const list = json(await env.STATE.get("thinking"), []);
+  if (!list.length) return;
+  const keep = [];
+  for (const x of list) {
+    if (Date.now() - x.at < 12 * 60 * 1000) {
+      keep.push(x);
+      continue;
+    }
+    const msg = await discord(env, "GET", `/channels/${x.c}/messages/${x.id}`).catch(() => null);
+    if (msg && (msg.content || "").startsWith("🤔 考え中")) {
+      await discord(env, "PATCH", `/channels/${x.c}/messages/${x.id}`, { content: STUCK_TEXT }).catch(() => {});
+    }
+  }
+  if (keep.length !== list.length) await env.STATE.put("thinking", JSON.stringify(keep));
 }
 
 async function underLimit(env, roleId) {
