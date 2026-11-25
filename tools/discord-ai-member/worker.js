@@ -1,5 +1,8 @@
 // discord-ai-member の受け口（Cloudflare Worker）
 //
+// 移行中：同じ受け口が中継（tools/discord-agents/interactions.js、URL の /interactions）に入った（#72）。
+// Discord 開発者画面の Interactions Endpoint URL を中継に切り替えたら、この Worker は消す。直すときは interactions.js のほうを直す。
+//
 // Discord のコマンド（commands.json）を受ける。どのコマンドも、ここで3秒以内に一言返す。
 //   /ai        … 「考え中…」を返し、repository_dispatch（discord-interaction）でリポジトリの Claude に渡す
 //   /record start … 「準備しています」を返し、repository_dispatch（discord-record）で録音の仕事を起こす
