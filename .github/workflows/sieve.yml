@@ -151,6 +151,16 @@ jobs:
             篩の仕事です。.sieve/event.json の出来事を、core:sieve の手順で1件ぶん進めてください。
             手順と決まりは、システムプロンプトの「篩の仕事」にあります。
 
+      - name: はじかれた道具を書き残す（コマンドの頭だけ。中身は残さない）
+        if: always() && steps.claude.outputs.execution_file != ''
+        env:
+          F: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          [ -f "$F" ] || exit 0
+          D=$(jq -r '[.[] | select(.type == "result") | .permission_denials[]? | (.tool_name + " " + ((.tool_input.command // .tool_input.file_path // "") | tostring | .[0:120]))] | .[]' "$F" 2>/dev/null || true)
+          [ -n "$D" ] || exit 0
+          { echo "### はじかれた道具"; echo "$D" | sed 's/^/- /'; } >> "$GITHUB_STEP_SUMMARY"
+          echo "$D"
       - name: '#提案 に直接書いた発言なら、その発言に篩のカードを返す'
         if: always() && github.event_name == 'repository_dispatch' && github.event.action == 'sieve-intake'
         env:
