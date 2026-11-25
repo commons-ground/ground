@@ -107,8 +107,8 @@ jobs:
           # 出来事を、篩に要る項目だけにして渡す（合鍵は渡さない）
           case "$EVENT_NAME" in
             repository_dispatch)
-              # sieve-intake は中継が #提案 の発言を見つけたとき、discord-propose は /propose・「コモンズに提案」
-              jq '{kind: (if .action == "sieve-intake" then "discord-message" else "discord-propose" end), text: .client_payload.text, proposer: .client_payload.user_name, author: (.client_payload.source_author // .client_payload.user_name), link: (.client_payload.source_link // ""), channel_id: (.client_payload.channel_id // ""), message_id: (.client_payload.message_id // "")}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
+              # sieve-intake は中継が #提案 の発言を見つけたとき、sieve-remember は AI の返事の〔覚えておく〕、discord-propose は /propose・「コモンズに提案」
+              jq '{kind: (if .action == "sieve-intake" then "discord-message" elif .action == "sieve-remember" then "ai-memory" else "discord-propose" end), text: .client_payload.text, proposer: .client_payload.user_name, author: (.client_payload.source_author // .client_payload.user_name), link: (.client_payload.source_link // ""), channel_id: (.client_payload.channel_id // ""), message_id: (.client_payload.message_id // "")}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
             issues)
               jq '{kind: "issue-opened", number: .issue.number, url: .issue.html_url, title: .issue.title, body: .issue.body, proposer: .issue.user.login}' "$EVENT_PATH_JSON" > .sieve/event.json ;;
             issue_comment)

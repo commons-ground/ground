@@ -26,6 +26,8 @@ permissions:
 jobs:
   reply:
     runs-on: ubuntu-latest
+    outputs:
+      memory: ${{ steps.mem.outputs.text }}
     timeout-minutes: 14  # Discord の合鍵は15分で切れる
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +56,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}  # gh で GitHub を読むため（書くコマンドは run.py で許していない）
         run: python ground/tools/discord-ai-member/run.py
       - name: 「覚えておく」を候補の Issue にためる（Discord には出さない）
+        id: mem
         if: success()
         continue-on-error: true  # ためるのに失敗しても、返事は出ているので失敗の知らせは出さない
         env:
@@ -71,6 +74,8 @@ jobs:
           fi
           gh issue comment "$N" -R "$REPO" --body-file "$FILE" > /dev/null
           echo "覚えておく候補を #$N に足した"
+          # 次の段で篩に渡す（harvest を待たない）
+          { echo "text<<SIEVE_EOF"; cat "$FILE"; echo "（候補の Issue：#$N）"; echo "SIEVE_EOF"; } >> "$GITHUB_OUTPUT"
       - name: 使われた記録を Issue にためる（スキル名と印だけ）
         if: success()
         continue-on-error: true
@@ -95,3 +100,23 @@ jobs:
           PAYLOAD: ${{ inputs.payload }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}  # メンションから来たときは、ボットの鍵で知らせる
         run: python ground/tools/discord-ai-member/run.py --fail
+
+  # 〔覚えておく〕を、harvest を待たずに篩に渡す。篩が memory.md と重なりを見て、要るものだけを memory.md へのプルリクエストにする。
+  # 返事の仕事とは分け、この小さな仕事だけに書き込み権限を持たせる（repository_dispatch を送るのに GitHub が contents: write を求めるため）
+  remember:
+    needs: reply
+    if: needs.reply.outputs.memory != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    steps:
+      - name: 篩に渡す（sieve-remember）
+        continue-on-error: true  # 渡せなくても、候補の Issue にはたまっているので harvest で拾える
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TEXT: ${{ needs.reply.outputs.memory }}
+        run: |
+          jq -n --arg t "$TEXT" '{event_type: "sieve-remember", client_payload: {text: $t}}' \
+            | gh api "repos/$REPO/dispatches" --input - && echo "篩に渡した"
