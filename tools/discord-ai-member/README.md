@@ -62,7 +62,10 @@ Discord で /ai 〇〇
 ```yaml
 on:
   repository_dispatch:
-    types: [discord-interaction]
+    types: [discord-interaction, discord-mention]
+permissions:
+  contents: write  # 〔覚えておく〕を篩に渡す（repository_dispatch）小さな仕事だけが使う。返事の仕事は読むだけ
+  issues: write    # 〔覚えておく〕を Issue「覚えておく候補」にためる
 jobs:
   reply:
     uses: commons-ground/ground/.github/workflows/discord-ai-member.yml@main

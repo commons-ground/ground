@@ -78,6 +78,50 @@ export default {
   },
 };
 
+// ── 見学者をコモンズメンバーに迎える（docs/membership.md） ─────────────
+// #ようこそ の発言に、コモンズメンバーが ✅ を付けたら、書いた人に「コモンズメンバー」のロールを付けて迎える。
+// 承認するのは人（メンバー）だけ。AI は承認しない。ロールとチャンネルは名前で探す（ID をリポジトリに書かない）。
+// ロールとチャンネルを用意するのは tools/members/setup.py。どちらかが無いあいだは何もしない
+const MEMBER_ROLE_NAME = "コモンズメンバー";
+const WELCOME_CHANNEL = "ようこそ";
+const APPROVE = new Set(["✅", "☑️", "✔️"]);
+
+async function membershipPlaces(env) {
+  const cached = json(await env.STATE.get("members:places"), null);
+  if (cached) return cached;
+  const roles = await discord(env, "GET", `/guilds/${env.DISCORD_GUILD_ID}/roles`);
+  const chans = await discord(env, "GET", `/guilds/${env.DISCORD_GUILD_ID}/channels`);
+  const places = {
+    role: roles.find((r) => r.name === (env.MEMBER_ROLE_NAME || MEMBER_ROLE_NAME))?.id || "",
+    welcome: chans.find((c) => c.type === 0 && c.name === (env.WELCOME_CHANNEL || WELCOME_CHANNEL))?.id || "",
+  };
+  await env.STATE.put("members:places", JSON.stringify(places), { expirationTtl: 3600 });
+  return places;
+}
+
+async function welcomeOnApproval(env, d) {
+  if (!APPROVE.has(d.emoji?.name) || (env.DISCORD_GUILD_ID && d.guild_id !== env.DISCORD_GUILD_ID)) return;
+  const { role, welcome } = await membershipPlaces(env);
+  if (!role || d.channel_id !== welcome) return;
+  if (!(d.member?.roles || []).includes(role)) return; // 付けたのがメンバーでなければ数えない
+  const msg = await discord(env, "GET", `/channels/${d.channel_id}/messages/${d.message_id}`);
+  const who = msg.author;
+  if (!who || who.bot || who.id === d.user_id) return; // 自分で自分を承認しない
+  const member = await discord(env, "GET", `/guilds/${env.DISCORD_GUILD_ID}/members/${who.id}`).catch(() => null);
+  if (!member || member.roles.includes(role)) return;
+  if (!(await once(env, `welcome:${who.id}`))) return;
+  await discord(env, "PUT", `/guilds/${env.DISCORD_GUILD_ID}/members/${who.id}/roles/${role}`);
+  await discord(env, "POST", `/channels/${d.channel_id}/messages`, {
+    content: [
+      `🎉 <@${who.id}> さん、コモンズメンバーへようこそ！（<@${d.user_id}> さんが迎えてくれたよ）`,
+      "これで #提案 に書いたり、みんなのスキルや知識コモンズを自分の Claude で使えるようになったよ。",
+      "はじめかた → https://commons-ground.github.io/ground/",
+    ].join("\n"),
+    message_reference: { message_id: d.message_id, fail_if_not_exists: false },
+    allowed_mentions: { users: [who.id] },
+  });
+}
+
 // ── 健康診断（1日1回、朝8時以降の最初の見回りで） ──────────────────
 // Claude の定期実行を増やさずに、毎分の見回りに相乗りする。異常があったときだけ #スキルの相談 に知らせる。
 //   - 鍵の台帳（tools/health/keys.json、値は書かない）：期限まで14日を切った鍵
@@ -202,7 +246,7 @@ async function dispatchRepo(env, repo, payload) {
 // 1つ（128MB）を1日つなぎっぱなしにして約 10,800 GB-s で、無料枠（13,000 GB-s/日）に収まる。
 // 切れたら毎分の見回りが ensure() で起こし直し、その間の取りこぼしは見回りが拾う。
 const GATEWAY_URL = "https://gateway.discord.gg/?v=10&encoding=json";
-const INTENTS = (1 << 0) | (1 << 9) | (1 << 15); // GUILDS, GUILD_MESSAGES, MESSAGE_CONTENT
+const INTENTS = (1 << 0) | (1 << 9) | (1 << 10) | (1 << 15); // GUILDS, GUILD_MESSAGES, GUILD_MESSAGE_REACTIONS, MESSAGE_CONTENT
 
 export class Gateway extends DurableObject {
   constructor(ctx, env) {
@@ -278,6 +322,8 @@ export class Gateway extends DurableObject {
         this.lastAck = Date.now();
       } else if (p.t === "MESSAGE_CREATE" || p.t === "MESSAGE_UPDATE") {
         await this.onDiscordMessage(p.t, p.d);
+      } else if (p.t === "MESSAGE_REACTION_ADD") {
+        await welcomeOnApproval(this.env, p.d).catch((e) => console.log(`welcome: ${e.message}`));
       }
     }
   }
