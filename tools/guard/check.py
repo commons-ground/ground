@@ -4,7 +4,8 @@
 - 止める（BLOCK）：鍵の書き込み、スクリプトの注入、外から落としたものをそのまま実行、
   外の人のコードが鍵つきで動く `pull_request_target`。直すまで入らない
 - 人に回す（HUMAN）：お金・回数の上限を上げる（お金の判断）、門番と自動マージを変える
-  （AI が自分の見張り役を弱められないように）、基本ルールを変える（コモンズの考え方の判断）
+  （AI が自分の見張り役を弱められないように）、基本ルールを変える（コモンズの考え方の判断）、
+  プラグインの hook など入れた全員の端末で自動で動くものを変える（配られた先で毎回走るシェル）
 - 書き残すだけ（NOTE）：新しい鍵を使い始める（判断は鍵を作るときに人がしている。無ければ動かないだけ）、
   書き込み権限を足す、大きく消す（どれも戻せる）。点検の結果に残し、通す
 - それ以外は、validate が通れば自動で入る。おかしければ「取り下げて」で戻す
@@ -35,6 +36,10 @@ SECRET_LITERALS = [
 # 安全の仕組みそのもの。ここを変えるのは、門番を弱められるかどうかの話なので人に回す
 SAFETY_FILES = re.compile(r"^(tools/guard/|\.github/workflows/(guard|auto-merge)\.yml$)")
 VALUES_FILES = re.compile(r"^plugins/core/skills/basic-rules/")
+# 配られた先の端末で毎回自動で動くもの（プラグインの hook とそこから呼ぶスクリプト）。
+# 入れた全員の Claude Code で、発話や操作のたびに走るシェルなので、人が読んでから入れる
+AUTORUN_FILES = re.compile(r"^plugins/[^/]+/(hooks/|scripts/|\.claude-plugin/plugin\.json$)")
+AUTORUN_KEYS = re.compile(r'"(hooks|mcpServers|lspServers)"\s*:')
 WORKFLOW = re.compile(r"^\.github/workflows/.+\.ya?ml$")
 WRITE_PERM = re.compile(
     r"^\s*(contents|issues|pull-requests|actions|packages|id-token|deployments|statuses|checks|pages|"
@@ -95,6 +100,9 @@ def check(diff: str) -> dict:
                     human.append(f"`{path}`：お金・回数の上限 `{m.group(1)}` を上げている（{max(old):g} → {m.group(2)}）")
         if SAFETY_FILES.match(path or ""):
             human.append(f"`{path}`：安全の仕組み（門番・自動マージ）を変えている")
+        if AUTORUN_FILES.match(path or ""):
+            if not path.endswith("plugin.json") or any(AUTORUN_KEYS.search(x) for x in ch["add"] + ch["del"]):
+                human.append(f"`{path}`：入れた全員の端末で自動で動くもの（hook など）を変えている")
         if VALUES_FILES.match(path or ""):
             human.append(f"`{path}`：基本ルール（コモンズの考え方）を変えている")
     if deleted > BIG_DELETE:
