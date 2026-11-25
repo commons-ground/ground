@@ -8,6 +8,7 @@
 | --- | --- |
 | Discord の `/propose`・「コモンズに提案」 | 受け口（中継の `/interactions`、`tools/discord-agents/interactions.js`）が送る repository_dispatch `discord-propose` を、`#提案` に載せる仕事（`discord-propose.yml`）と篩が両方受け取る |
 | `#提案` に直接書いた発言、通話の議事録から出た〔提案〕 | 中継（`tools/discord-agents/router.js`）が毎分の見回りのついでに見つけ、repository_dispatch `sieve-intake` を送る |
+| コモンズの AI の返事に〔覚えておく〕が出る | 返事の仕事（`discord-ai-member.yml`）の最後の小さな仕事が repository_dispatch `sieve-remember` を送る |
 | 提案の Issue を作る（様式「提案（篩にかける）」、またはタイトルが「〔提案〕」） | GitHub の `issues: opened` |
 | カード（ラベル「篩」の Issue）にコメントが付く | GitHub の `issue_comment: created` |
 
@@ -29,7 +30,7 @@
 ```yaml
 on:
   repository_dispatch:
-    types: [discord-propose, sieve-intake]
+    types: [discord-propose, sieve-intake, sieve-remember]
   issues:
     types: [opened]
   issue_comment:
@@ -74,7 +75,6 @@ jobs:
 
 ## まだ無いもの
 
-- AI の返事の〔覚えておく〕を、自動で篩に渡す道。いまは harvest で拾う
 
 ## 中継に篩の入り口を受け持たせる（世話役が1回）
 
