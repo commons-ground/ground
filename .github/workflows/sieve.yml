@@ -97,9 +97,10 @@ jobs:
           {
             # gh と git は、読むことと手元の操作だけ。公開の場所に書くのは safe.py の門だけ（点検してから書く）。
             # 外に文を出せる道（WebSearch など）は渡さない
+            # 道具の名前に空白があるので、--allowedTools の値はまとめて引用符で囲む（囲まないと空白で切れて、道具がはじかれる）
             GHR="Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh search:*),Bash(gh label list:*)"
             GIT="Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git fetch:*),Bash(git checkout:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git rev-parse:*),Bash(git branch:*),Bash(git revert:*)"
-            echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $G/tools/sieve/agent.md --allowedTools $GHR,$GIT,Bash(python3 $G/tools/sieve/safe.py:*),Read,Write,Edit,Glob,Grep"
+            echo "args=--model $MODEL --max-turns $MAX_TURNS --append-system-prompt-file $G/tools/sieve/agent.md --allowedTools \"$GHR,$GIT,Bash(python3 $G/tools/sieve/safe.py:*),Read,Write,Edit,Glob,Grep\""
             echo "marketplaces<<EOF"; printf '%s' "$MK"; echo "EOF"
             echo "plugins<<EOF"; printf '%s' "$PL"; echo "EOF"
           } >> "$GITHUB_OUTPUT"

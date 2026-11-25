@@ -54,6 +54,7 @@ jobs:
         run: python ground/tools/discord-ai-member/run.py
       - name: 「覚えておく」を候補の Issue にためる（Discord には出さない）
         if: success()
+        continue-on-error: true  # ためるのに失敗しても、返事は出ているので失敗の知らせは出さない
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -63,9 +64,9 @@ jobs:
           gh label create "覚えておく候補" -R "$REPO" --color C5DEF5 --description "AI が覚えたいこと。人が確かめて memory.md に入れる" 2>/dev/null || true
           N=$(gh issue list -R "$REPO" --label "覚えておく候補" --state open --json number -q '.[0].number')
           if [ -z "$N" ]; then
-            gh issue create -R "$REPO" --label "覚えておく候補" --title "🧠 覚えておく候補" \
-              --body "コモンズのAIが、やりとりから「次から覚えておきたい」と思ったことがここにたまる。core:harvest で拾い、人が確かめてから discord/memory.md に入れる。入れ終わったら閉じてよい（次の候補で新しく開く）。" > /dev/null
-            N=$(gh issue list -R "$REPO" --label "覚えておく候補" --state open --json number -q '.[0].number')
+            # 作った Issue の URL をそのまま使う（作った直後の一覧には、まだ出てこないことがある）
+            N=$(gh issue create -R "$REPO" --label "覚えておく候補" --title "🧠 覚えておく候補" \
+              --body "コモンズのAIが、やりとりから「次から覚えておきたい」と思ったことがここにたまる。core:harvest で拾い、人が確かめてから discord/memory.md に入れる。入れ終わったら閉じてよい（次の候補で新しく開く）。")
           fi
           gh issue comment "$N" -R "$REPO" --body-file "$FILE" > /dev/null
           echo "覚えておく候補を #$N に足した"
@@ -73,4 +74,5 @@ jobs:
         if: failure() || cancelled()
         env:
           PAYLOAD: ${{ inputs.payload }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}  # メンションから来たときは、ボットの鍵で知らせる
         run: python ground/tools/discord-ai-member/run.py --fail
