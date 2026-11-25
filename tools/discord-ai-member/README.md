@@ -18,14 +18,14 @@ AI とのやり取りは、すべて Discord のコマンドの形にそろえ�
 コマンドを足すとき：
 
 1. `commands.json` に足す（名前は短い英語、説明は日本語）
-2. `worker.js` に振り分けを足す。3秒で済むものは受け口でその場に返し、時間がかかるものは repository_dispatch で GitHub Actions に渡す。`HELP` も合わせる
+2. 中継の `tools/discord-agents/interactions.js` に振り分けを足す。3秒で済むものは受け口でその場に返し、時間がかかるものは repository_dispatch で GitHub Actions に渡す。`HELP` も合わせる
 3. 受け口を置き直し、`discord-commands` の workflow で登録し直す
 
 ## 流れ
 
 ```
 Discord で /ai 〇〇
-  → 受け口（Cloudflare Worker、worker.js）
+  → 受け口（中継の Worker の `/interactions`、tools/discord-agents/interactions.js）
       署名を確かめ、すぐ「考え中…」を返し、repository_dispatch で渡す
   → 各コモンズのリポジトリの workflow
   → この ground の workflow（.github/workflows/discord-ai-member.yml）
@@ -41,7 +41,7 @@ Discord で /ai 〇〇
 
 | もの | 場所 |
 |:--|:--|
-| 受け口 | `worker.js` を Cloudflare Worker に置く |
+| 受け口 | 中継（`tools/discord-agents`）の `/interactions`。Discord 開発者画面の Interactions Endpoint URL に中継の URL ＋ `/interactions` を入れる |
 | 返事を作る処理 | `run.py`（ground の workflow から動く） |
 | コマンドの登録 | `register.py`（最初に1回） |
 | 呼び名・モデル・上限額 | 呼び出し側の `discord/config.json` |

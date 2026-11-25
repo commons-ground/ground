@@ -169,9 +169,9 @@ async function checkTrials(today) {
   return late.length ? [`🧪 見直し日を過ぎた試行が ${late.length} 件（例：${late[0][2]}）→ https://github.com/commons-ground/ground/blob/main/docs/trials.md`] : [];
 }
 
-// ほかの Worker（Discord のコマンドの受け口 tools/discord-ai-member/worker.js）から、
-// サービスバインディングで呼ぶ入口。外の URL からは呼べない。
-// 受け口が期限つきのトークン（PAT）を持たずに、コモンズの GitHub アプリとして dispatch できるようにする。
+// ほかの Worker から、サービスバインディングで呼ぶ入口。外の URL からは呼べない。
+// 期限つきのトークン（PAT）を持たずに、コモンズの GitHub アプリとして dispatch できるようにする。
+// いまは使う Worker が無い（コマンドの受け口は /interactions として中継に入った）。次に別の Worker を足すとき用。
 // 送れるのは commons-ground の中のリポジトリだけ。
 export class Dispatcher extends WorkerEntrypoint {
   async dispatch(repo, payload) {

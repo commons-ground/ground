@@ -20,7 +20,6 @@ on:
         type: choice
         options:
           - discord-agents（中継）
-          - discord-hook（コマンドの受け口）
 
 permissions:
   contents: read
@@ -46,13 +45,6 @@ jobs:
             discord-agents*)
               NAME=commons-discord-agents; FILE=tools/discord-agents/router.js; MAIN=router.js
               EXTRA=(-F "interactions.js=@tools/discord-agents/interactions.js;type=application/javascript+module")
-              # コマンドの受け口（/interactions）の変数。まだ中継に無ければ、以前の受け口（commons-discord-hook）の設定から写す（秘密ではない値だけ）
-              S="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts"
-              MINE=$(curl -sS "$S/$NAME/settings" -H "Authorization: Bearer $CF_TOKEN" | jq -c '[.result.bindings[]?.name]')
-              ADD=$(curl -sS "$S/commons-discord-hook/settings" -H "Authorization: Bearer $CF_TOKEN" \
-                | jq -c --argjson mine "$MINE" '[.result.bindings[]? | select(.type == "plain_text")
-                    | select((.name == "DISCORD_PUBLIC_KEY" and ($mine | index("DISCORD_PUBLIC_KEY") | not)) or (.name == "REPO" and ($mine | index("COMMANDS_REPO") | not)))
-                    | {type: "plain_text", name: (if .name == "REPO" then "COMMANDS_REPO" else .name end), text}]' 2>/dev/null || echo '[]')
               # 常時接続の係（Durable Object「Gateway」）。初めて置くときだけ、クラスを作る移行（migrations）を付ける
               HAS_DO=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/$NAME/settings" -H "Authorization: Bearer $CF_TOKEN" \
                 | jq '[.result.bindings[]? | select(.type == "durable_object_namespace" and .name == "GATEWAY")] | length')
@@ -61,13 +53,6 @@ jobs:
               else
                 META='{"main_module":"router.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text","kv_namespace","durable_object_namespace"]}'
               fi
-              META=$(jq -c --argjson add "${ADD:-[]}" '.bindings = ((.bindings // []) + $add)' <<< "$META")
-              ;;
-            discord-hook*)
-              # 受け口は、中継の入口 Dispatcher をサービスバインディング ROUTER で呼ぶ（期限つきのトークンを持たない）
-              NAME=commons-discord-hook; FILE=tools/discord-ai-member/worker.js; MAIN=worker.js
-              EXTRA=()
-              META='{"main_module":"worker.js","compatibility_date":"2026-11-24","keep_bindings":["plain_text","secret_text"],"bindings":[{"type":"service","name":"ROUTER","service":"commons-discord-agents","entrypoint":"Dispatcher"}]}'
               ;;
             *) echo "知らない Worker です：$TARGET"; exit 1 ;;
           esac
