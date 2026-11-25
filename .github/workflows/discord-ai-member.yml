@@ -50,6 +50,7 @@ jobs:
           MEMBER_DIR: ${{ github.workspace }}/self/${{ inputs.member_dir }}
           PLUGIN_ROOTS: ${{ github.workspace }}/self:${{ github.workspace }}/ground
           MEMORY_CANDIDATES: ${{ runner.temp }}/memory-candidates.md
+          USAGE_RECORD: ${{ runner.temp }}/usage.md
           GH_TOKEN: ${{ github.token }}  # gh で GitHub を読むため（書くコマンドは run.py で許していない）
         run: python ground/tools/discord-ai-member/run.py
       - name: 「覚えておく」を候補の Issue にためる（Discord には出さない）
@@ -70,6 +71,24 @@ jobs:
           fi
           gh issue comment "$N" -R "$REPO" --body-file "$FILE" > /dev/null
           echo "覚えておく候補を #$N に足した"
+      - name: 使われた記録を Issue にためる（スキル名と印だけ）
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          FILE: ${{ runner.temp }}/usage.md
+        run: |
+          [ -s "$FILE" ] || exit 0
+          MONTH=$(TZ=Asia/Tokyo date +%Y-%m)
+          TITLE="📊 使われた記録 $MONTH"
+          gh label create "使われた記録" -R "$REPO" --color EDEDED --description "スキル名と返事の印だけ。中身は残さない" 2>/dev/null || true
+          N=$(gh issue list -R "$REPO" --label "使われた記録" --state open --search "\"$TITLE\" in:title" --json number -q '.[0].number')
+          if [ -z "$N" ]; then
+            N=$(gh issue create -R "$REPO" --label "使われた記録" --title "$TITLE" \
+              --body "コモンズのAIの返事ごとに、日付・呼ばれ方・使ったスキル・返事の印（発言IDの短いハッシュ）を1行ずつためる。質問と答えの中身は残さない。👍👎 の数は試行の見直しのときに ground の tools/usage/count.py で数える。数は判断の材料の1つで、これだけで定着・取り下げを決めない。月が変わったら閉じてよい。")
+          fi
+          gh issue comment "$N" -R "$REPO" --body-file "$FILE" > /dev/null
       - name: 失敗したら「考え中…」を直す
         if: failure() || cancelled()
         env:

@@ -18,10 +18,12 @@ Claude Agent SDK（コモンズのプラグイン入り）で答えて、「考�
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -57,7 +59,7 @@ def split_text(text: str) -> list[str]:
     return chunks or [""]
 
 
-def post_answer(p: dict, text: str) -> None:
+def post_answer(p: dict, text: str) -> str:
     """答えを書く。/ai なら「考え中…」を書き換え、メンションなら元の発言への返信として書く。"""
     no_ping = {"parse": []}  # @everyone などで人を呼ばない
     chunks = split_text(text)
@@ -65,22 +67,44 @@ def post_answer(p: dict, text: str) -> None:
         # メンションから来たとき（中継の discord-mention）。合鍵が無いので、ボットの鍵で返信する
         h = {"Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}"}
         # 中継が先に「考え中…」を返信していれば、それを答えに書き換える
+        first = ""
         if p.get("reply_id"):
             r = requests.patch(f"{API}/channels/{p['channel_id']}/messages/{p['reply_id']}", headers=h,
                                json={"content": chunks[0], "allowed_mentions": no_ping}, timeout=30)
             if r.ok:
-                chunks = chunks[1:]
+                chunks, first = chunks[1:], p["reply_id"]
         for i, c in enumerate(chunks):
             body = {"content": c, "allowed_mentions": no_ping}
             if i == 0 and p.get("message_id"):
                 body["message_reference"] = {"message_id": p["message_id"], "fail_if_not_exists": False}
-            requests.post(f"{API}/channels/{p['channel_id']}/messages", headers=h, json=body, timeout=30).raise_for_status()
-        return
+            r = requests.post(f"{API}/channels/{p['channel_id']}/messages", headers=h, json=body, timeout=30)
+            r.raise_for_status()
+            first = first or r.json().get("id", "")
+        return first
     base = f"{API}/webhooks/{p['application_id']}/{p['token']}"
     r = requests.patch(f"{base}/messages/@original", json={"content": chunks[0], "allowed_mentions": no_ping}, timeout=30)
     r.raise_for_status()
     for c in chunks[1:]:
         requests.post(base, json={"content": c, "allowed_mentions": no_ping}, timeout=30).raise_for_status()
+    return r.json().get("id", "")
+
+
+def ref_of(message_id: str) -> str:
+    """返事の発言を、IDを公開せずに後で見分けるための短い印（tools/usage/count.py が同じ計算で照らす）。"""
+    return hashlib.sha256(message_id.encode()).hexdigest()[:12] if message_id else "-"
+
+
+def record_usage(p: dict, info: dict, message_id: str) -> None:
+    """使われた記録を1行だけ残す（スキル名と印だけ。質問・答えの中身は残さない）。
+    ワークフローが Issue「📊 使われた記録」にためる。👍👎 の数は、見直しのときに count.py が数える。"""
+    path = os.environ.get("USAGE_RECORD")
+    if not path:
+        return
+    kind = "メンション" if p.get("command") == "mention" else "/ai"
+    skills = "、".join(sorted(set(info.get("skills_used") or []))) or "なし"
+    day = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 9 * 3600))
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"| {day} | {kind} | {skills} | {ref_of(message_id)} |\n")
 
 
 def recent_messages(channel_id: str, limit: int) -> str:
@@ -249,7 +273,11 @@ def main() -> int:
     answer = hand_to_sieve(answer, p)
     # 何への答えかが見えるように、質問を引用で添える（メンションは元の発言への返信になるので要らない）
     header = "" if p.get("command") == "mention" else f"> {question[:300]}\n\n"
-    post_answer(p, header + (answer or FAIL_TEXT))
+    sent = post_answer(p, header + (answer or FAIL_TEXT))
+    try:
+        record_usage(p, info, sent)
+    except Exception as e:  # noqa: BLE001  記録に失敗しても返事は済んでいる
+        print(f"使われた記録を残せなかった：{e}")
     return 0
 
 
