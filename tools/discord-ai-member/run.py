@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -130,7 +131,7 @@ def build_system_prompt(member_md: str, user_name: str, memory_md: str = "") -> 
 - 分からないことは推測で埋めない。調べて分からなければ、そう書く
 - ここは複数の事業者が集まる場所。ほかの事業者の事業データ（人名、金額、口座、住所、取引先）は書かない
 - 最後の出力が、そのまま返事として投稿される
-- 次の自分（GitHub の自分も含む）が知っておくべきこと（人に直されたこと、コモンズで決まったこと、次から気をつけること）が出たら、返事の最後に「〔覚えておく〕（1行）」と書く。その場かぎりの話、事業データ、推測は書かない。core:harvest で拾われて、覚えていることに入る"""
+- 次の自分（GitHub の自分も含む）が知っておくべきこと（人に直されたこと、コモンズで決まったこと、次から気をつけること）が出たら、返事の最後に「〔覚えておく〕（1行）」と書く。この行は Discord には出ず、裏で「覚えておく候補」に入り、人が確かめてから覚えていることに入る。その場かぎりの話、事業データ、推測、「見つからなかった・できなかった」という自分の限界は書かない"""
     memory = f"\n\n{memory_md}" if memory_md.strip() else ""
     return member_md + memory + person + rules
 
@@ -236,10 +237,36 @@ def main() -> int:
 
     answer, info = asyncio.run(run_agent(prompt, system_prompt, config, plugins, work))
     write_summary(info, config, origins)
+    answer = keep_memory_quietly(answer, p)
     # 何への答えかが見えるように、質問を引用で添える（メンションは元の発言への返信になるので要らない）
     header = "" if p.get("command") == "mention" else f"> {question[:300]}\n\n"
     post_answer(p, header + (answer or FAIL_TEXT))
     return 0
+
+
+MEMORY_MARK = re.compile(r"^\s*[〔\[]覚えておく[〕\]]\s*(.+)$")
+
+
+def keep_memory_quietly(answer: str, p: dict) -> str:
+    """返事から「〔覚えておく〕」の行を外し、候補のファイルに書く（Discord には出さない）。
+    候補は workflow の次の段で、リポジトリの Issue「覚えておく候補」にたまる。"""
+    keep, notes = [], []
+    for line in answer.splitlines():
+        m = MEMORY_MARK.match(line)
+        if m:
+            if m.group(1).strip() not in notes:
+                notes.append(m.group(1).strip())
+        else:
+            keep.append(line)
+    path = os.environ.get("MEMORY_CANDIDATES")
+    if notes and path:
+        link = ""
+        if p.get("guild_id") and p.get("channel_id") and p.get("message_id"):
+            link = f"https://discord.com/channels/{p['guild_id']}/{p['channel_id']}/{p['message_id']}"
+        with open(path, "a") as f:
+            for n in notes:
+                f.write(f"- {n}" + (f"（[元の発言]({link})）" if link else "") + "\n")
+    return "\n".join(keep).strip()
 
 
 def fail() -> int:
