@@ -2,12 +2,6 @@
   "_説明": "鍵の台帳。値は書かない。中継（tools/discord-agents/router.js）の健康診断が毎日読み、期限の14日前から #スキルの相談 に知らせる。期限が無い・分からない鍵は expires を null にする。鍵を作り直したら expires を書き換える。",
   "keys": [
     {
-      "name": "PAT「commons-discord-hook」",
-      "where": "Worker commons-discord-hook の secret",
-      "expires": "2026-12-25",
-      "fix": "Worker ごと消す（受け口は中継の /interactions に移った）。消したらこの行も消す"
-    },
-    {
       "name": "winegrowers の ANTHROPIC_API_KEY",
       "where": "winegrowers の Actions secrets",
       "expires": null,
