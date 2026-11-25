@@ -106,8 +106,23 @@ def main() -> int:
             after = page[-1]["user"]["id"]
             if len(page) < 1000:
                 break
-    except SystemExit as e:
-        raise SystemExit(f"名簿が読めません（Discord 開発者画面 → Bot → SERVER MEMBERS INTENT を入れると読めます）：{e}")
+    except SystemExit:
+        # 名簿を読む許可（SERVER MEMBERS INTENT）が無いときは、チャンネルで発言したことのある人を「いまいる人」とみなす
+        print("名簿は読めないので、発言したことのある人から集める")
+        seen = {}
+        for c in call("GET", f"/guilds/{gid}/channels"):
+            if c["type"] != 0:
+                continue
+            try:
+                for msg in call("GET", f"/channels/{c['id']}/messages?limit=100"):
+                    seen[msg["author"]["id"]] = msg["author"]
+            except SystemExit:
+                continue
+        for uid in list(seen) + [me["id"]]:
+            try:
+                people.append(call("GET", f"/guilds/{gid}/members/{uid}"))
+            except SystemExit:
+                pass  # もう抜けた人
     for m in people:
         u = m["user"]
         if u.get("bot") and u["id"] != me["id"]:
