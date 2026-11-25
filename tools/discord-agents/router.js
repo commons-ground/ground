@@ -29,6 +29,8 @@
 //   変数    SIEVE                （任意）JSON {"channel": "提案", "repo": "commons-ground/winegrowers"}。
 //                                あれば篩の入り口を受け持つ。そのリポジトリにも Commons Agents アプリを入れておく。
 //                                channel は DISCORD_CHANNELS にも入れておく
+//   変数    DISCORD_PUBLIC_KEY   Discord のコマンドの受け口（/interactions）で署名を確かめる公開キー（interactions.js）
+//   変数    COMMANDS_REPO        コマンドを渡す先のリポジトリ（例 commons-ground/winegrowers）
 //   変数    HEALTH_CHANNEL       （任意）健康診断の知らせ先のチャンネル名。既定は「スキルの相談」
 //   変数    COMMONS_AI           （任意）JSON {"repo": "commons-ground/winegrowers", "user_id": "ボットのユーザーID"}。
 //                                あれば、コモンズのAI（ボット）へのメンションを拾い、/ai と同じ AI に答えさせる
@@ -41,6 +43,7 @@
 //   - 1つの分身が1時間に動くのは MAX_PER_HOUR 回まで
 
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+import { handleInteraction, notifyFail } from "./interactions.js";
 
 const API = "https://discord.com/api/v10";
 const MAX_HOPS = 3;
@@ -61,9 +64,16 @@ export default {
     ctx.waitUntil(checkThinking(env).catch((e) => console.log(`thinking check: ${e.message}`)));
     ctx.waitUntil(healthCheck(env).catch((e) => console.log(`health check: ${e.message}`)));
   },
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/reply" && request.method === "POST") return reply(request, env);
+    // Discord のコマンドの受け口（interactions.js）。以前の commons-discord-hook を寄せた（#72）
+    if (url.pathname === "/interactions" && request.method === "POST") {
+      return handleInteraction(request, env, ctx, async (payload, failText) => {
+        const r = await dispatchRepo(env, env.COMMANDS_REPO, payload).catch((e) => ({ ok: false, status: e.message }));
+        if (!r.ok) await notifyFail(payload, failText);
+      });
+    }
     return new Response("discord-agents");
   },
 };
@@ -165,21 +175,25 @@ async function checkTrials(today) {
 // 送れるのは commons-ground の中のリポジトリだけ。
 export class Dispatcher extends WorkerEntrypoint {
   async dispatch(repo, payload) {
-    if (!/^commons-ground\/[A-Za-z0-9._-]+$/.test(String(repo))) return { ok: false, status: 400 };
-    const token = await installationToken(this.env, repo);
-    const res = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "User-Agent": "discord-agents",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    console.log(`dispatch via binding ${payload?.event_type}: ${res.status}`);
-    return { ok: res.ok, status: res.status };
+    return dispatchRepo(this.env, repo, payload);
   }
+}
+
+async function dispatchRepo(env, repo, payload) {
+  if (!/^commons-ground\/[A-Za-z0-9._-]+$/.test(String(repo))) return { ok: false, status: 400 };
+  const token = await installationToken(env, repo);
+  const res = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "discord-agents",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  console.log(`dispatch ${payload?.event_type}: ${res.status}`);
+  return { ok: res.ok, status: res.status };
 }
 
 // ── 常時接続（Discord Gateway） ──────────────────────────────
