@@ -1,0 +1,62 @@
+# 門番：プルリクエストの差分を機械で点検する（tools/guard/check.py）。
+# - 危ない変更は止める（このチェックが失敗し、直すまで main に入らない）
+# - 人にしか決められない変更だけ、理由を書いて人に回す。人がラベル「確認済み」を付けると通る
+# - それ以外は通す。validate と一緒に通れば自動でマージされる
+#
+# pull_request_target で動くので、点検に使うのはいつも main（土台）側のこの workflow と check.py。
+# プルリクエスト側のコードは実行しない（差分を文字として読むだけ）。PR で門番そのものを書き換えても、その PR の点検には効かない。
+# winegrowers などからは workflow_call で呼ぶ。
+name: guard
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 点検の道具（土台の main）を持ってくる
+        uses: actions/checkout@v4
+        with:
+          repository: commons-ground/ground
+          ref: main
+          path: guard-src
+          sparse-checkout: tools/guard
+      - name: 差分を点検する
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+          OK_LABEL: ${{ contains(github.event.pull_request.labels.*.name, '確認済み') }}
+        run: |
+          set -euo pipefail
+          gh pr diff "$PR" > pr.diff
+          python3 guard-src/tools/guard/check.py pr.diff > result.json
+          BLOCK=$(jq -r '.block[]' result.json)
+          HUMAN=$(jq -r '.human[]' result.json)
+          {
+            echo "### 門番の点検"
+            [ -n "$BLOCK" ] && { echo "**止めた（直すまで入らない）**"; jq -r '.block[] | "- " + .' result.json; }
+            [ -n "$HUMAN" ] && { echo "**人に回した**"; jq -r '.human[] | "- " + .' result.json; }
+            [ -z "$BLOCK$HUMAN" ] && echo "問題なし。validate が通れば自動で入る"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$BLOCK" ]; then
+            jq -r '"🚫 門番が止めました。直すまで main に入りません。\n\n" + (.block | map("- " + .) | join("\n"))' result.json > note.md
+            gh pr comment "$PR" --body-file note.md --edit-last 2>/dev/null || gh pr comment "$PR" --body-file note.md
+            exit 1
+          fi
+          if [ -n "$HUMAN" ]; then
+            if [ "$OK_LABEL" = "true" ]; then
+              echo "人が「確認済み」を付けたので通す"
+              exit 0
+            fi
+            gh label create "確認済み" -R "${{ github.repository }}" --color 0E8A16 --description "門番が人に回したものを、人が確かめた" 2>/dev/null || true
+            jq -r '"🙋 人にしか決められない変更があります。確かめて良ければ、ラベル「確認済み」を付けてください（それで自動で入ります）。\n\n" + (.human | map("- " + .) | join("\n"))' result.json > note.md
+            gh pr comment "$PR" --body-file note.md --edit-last 2>/dev/null || gh pr comment "$PR" --body-file note.md
+            exit 1
+          fi
