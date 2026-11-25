@@ -3,6 +3,7 @@
 # 鍵は environment「cloudflare」に置く。environment に「確認する人」を設定すれば、実行の前に人の承認を待つ。
 #
 # 置き直すのはコードだけ。Worker の画面で入れた変数・secret・KV はそのまま残す（keep_bindings）。
+# 置いたあと URL を開いて確かめ、応えなければ直前の版に自動で戻す。
 # 毎分の見回り（Cron トリガー）も消えない。
 #
 # environment「cloudflare」に要るもの
@@ -61,11 +62,30 @@ jobs:
             *) echo "知らない Worker です：$TARGET"; exit 1 ;;
           esac
           API="https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/$NAME"
+          # 戻し先：いま動いている版
+          PREV=$(curl -sS "$API/deployments" -H "Authorization: Bearer $CF_TOKEN" | jq -r '.result.deployments[0].versions[0].version_id // empty')
           printf '%s' "$META" > meta.json
           curl -sS -X PUT "$API" -H "Authorization: Bearer $CF_TOKEN" \
             -F "metadata=@meta.json;type=application/json" \
             -F "$MAIN=@$FILE;type=application/javascript+module" > put.json
           jq -e '.success' put.json > /dev/null || { jq '.errors' put.json; exit 1; }
+          # 確かめる：URL を開いて、決まった返事（中継は discord-agents、受け口は ok）が30秒以内に返るか。
+          # 返らなければ、置く前に動いていた版に戻して、失敗として知らせる
+          case "$NAME" in commons-discord-agents) EXPECT=discord-agents ;; *) EXPECT=ok ;; esac
+          SUB=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/subdomain" -H "Authorization: Bearer $CF_TOKEN" | jq -r '.result.subdomain')
+          ok=""
+          for i in 1 2 3 4 5 6; do
+            sleep 5
+            [ "$(curl -sS --max-time 10 "https://$NAME.$SUB.workers.dev/" || true)" = "$EXPECT" ] && { ok=1; break; }
+          done
+          if [ -z "$ok" ]; then
+            if [ -n "$PREV" ]; then
+              curl -sS -X POST "$API/deployments" -H "Authorization: Bearer $CF_TOKEN" -H "Content-Type: application/json" \
+                --data "{\"strategy\":\"percentage\",\"versions\":[{\"version_id\":\"$PREV\",\"percentage\":100}]}" | jq -c '{success, errors}'
+            fi
+            echo "- ↩️ $NAME：置いたが応えなかったので、前の版に戻した" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           echo "置き直しました：$NAME（$(git rev-parse --short HEAD)）"
           echo "### 置き直した設定" >> "$GITHUB_STEP_SUMMARY"
           curl -sS "$API/settings" -H "Authorization: Bearer $CF_TOKEN" | jq -r '.result.bindings[] | "- \(.type)：\(.name)"' >> "$GITHUB_STEP_SUMMARY"
