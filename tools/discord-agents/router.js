@@ -67,6 +67,11 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/reply" && request.method === "POST") return reply(request, env);
+    // 見回りが走っているかを外から確かめるための入口（中身は日付だけ。when-to-ask の7）
+    if (url.pathname === "/health") {
+      const last = await env.STATE.get("health:last");
+      return new Response(JSON.stringify({ health_checked: last || null }), { headers: { "content-type": "application/json" } });
+    }
     // Discord のコマンドの受け口（interactions.js）。以前の commons-discord-hook を寄せた（#72）
     if (url.pathname === "/interactions" && request.method === "POST") {
       return handleInteraction(request, env, ctx, async (payload, failText) => {
@@ -128,6 +133,7 @@ async function welcomeOnApproval(env, d) {
 //   - Discord の招待：あと3日で切れる、または残り回数が1以下（招待を読む権限が無ければ飛ばす）
 //   - 1日以上動きのない、下書きでないプルリクエスト（ground・winegrowers）
 //   - 見直し日を過ぎた試行（docs/trials.md の「試行中」の行）
+//   - 門番（guard）の成功の記録なしに入った PR（安全策が本当に走っているか）
 // 変数 HEALTH_CHANNEL（任意）で知らせる先のチャンネル名を変えられる
 const RAW = "https://raw.githubusercontent.com/commons-ground";
 const HEALTH_REPOS = ["commons-ground/ground", "commons-ground/winegrowers"];
@@ -142,6 +148,7 @@ async function healthCheck(env) {
   const { date, hour } = jstNow();
   if (hour < 8 || (await env.STATE.get(`health:${date}`))) return;
   await env.STATE.put(`health:${date}`, "1", { expirationTtl: 2 * 86400 });
+  await env.STATE.put("health:last", date);
   const found = [];
   const part = async (name, f) => {
     try {
@@ -153,6 +160,7 @@ async function healthCheck(env) {
   await part("keys", () => checkKeys(date));
   await part("invites", () => checkInvites(env));
   await part("prs", () => checkPulls());
+  await part("guard", () => checkGuardRan());
   await part("trials", () => checkTrials(date));
   if (!found.length) return;
   const name = env.HEALTH_CHANNEL || "スキルの相談";
@@ -186,6 +194,28 @@ async function checkInvites(env) {
     const why = left <= 1 ? `残り${left}回` : `あと${Math.max(0, Math.ceil((end - now) / DAY))}日`;
     return [`📨 招待 discord.gg/${i.code} が ${why} で使えなくなる。新しい招待を作ってピン留めを差し替えてね`];
   });
+}
+
+// 機械の安全策が本当に走っているか（when-to-ask の7）：この1日に入った PR に、門番（guard）が成功した記録があるか
+async function checkGuardRan() {
+  const gh = (path) =>
+    fetch(`https://api.github.com/repos/${path}`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "discord-agents" } }).then((r) => {
+      if (!r.ok) throw new Error(`${path} ${r.status}`);
+      return r.json();
+    });
+  const out = [];
+  for (const repo of HEALTH_REPOS) {
+    const merged = (await gh(`${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=30`)).filter(
+      (p) => p.merged_at && Date.now() - Date.parse(p.merged_at) < DAY,
+    );
+    for (const p of merged) {
+      const runs = (await gh(`${repo}/commits/${p.head.sha}/check-runs?per_page=100`)).check_runs || [];
+      const ok = runs.some((r) => /guard/.test(r.name) && r.conclusion === "success");
+      const labeled = (p.labels || []).some((l) => l.name === "確認済み");
+      if (!ok && !labeled) out.push(`🚨 ${repo.split("/")[1]}#${p.number}「${p.title}」が、門番（guard）の成功の記録なしに入ってる → ${p.html_url}`);
+    }
+  }
+  return out;
 }
 
 async function checkPulls() {
